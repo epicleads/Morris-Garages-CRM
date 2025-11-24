@@ -335,17 +335,28 @@ export const updateLeadStatus = async (
   // Get current lead
   const lead = await getLeadById(user, leadId);
 
+  const attemptNo = input.attemptNo || lead.total_attempts + 1;
+
   const updateData: any = {
     status: input.status,
     updated_at: new Date().toISOString(),
+    total_attempts: attemptNo,
   };
+
+  if (input.remarks) {
+    updateData.Lead_Remarks = input.remarks;
+  }
 
   // Handle status-specific requirements
   if (input.status === 'Pending') {
     if (!input.nextFollowupAt) {
       throw new Error('nextFollowupAt is required for Pending status');
     }
+    if (!input.remarks || input.remarks.trim() === '') {
+      throw new Error('remarks are required for Pending status to capture follow-up context');
+    }
     updateData.next_followup_at = input.nextFollowupAt;
+    updateData.IS_LOST = false;
   }
 
   if (input.status === 'Qualified') {
@@ -356,8 +367,32 @@ export const updateLeadStatus = async (
     updateData.is_qualified = true;
   }
 
-  if (input.nextFollowupAt && input.status !== 'Pending' && input.status !== 'Qualified') {
+  if (input.status === 'Disqualified') {
+    if (!input.disqualifyReason) {
+      throw new Error('disqualifyReason is required for Disqualified status');
+    }
+    updateData.IS_LOST = true;
+  }
+
+  if (input.status === 'Lost') {
+    updateData.IS_LOST = true;
+  }
+
+  if (
+    input.nextFollowupAt &&
+    input.status !== 'Pending' &&
+    input.status !== 'Qualified'
+  ) {
     updateData.next_followup_at = input.nextFollowupAt;
+  }
+
+  // Ensure IS_LOST resets when moving back to working statuses
+  if (
+    input.status !== 'Disqualified' &&
+    input.status !== 'Lost' &&
+    updateData.IS_LOST === undefined
+  ) {
+    updateData.IS_LOST = false;
   }
 
   // Update lead
@@ -371,9 +406,6 @@ export const updateLeadStatus = async (
   if (updateError) {
     throw new Error(`Failed to update lead: ${updateError.message}`);
   }
-
-  // Calculate attempt number
-  const attemptNo = input.attemptNo || (lead.total_attempts + 1);
 
   // Create lead log with metadata
   const logMetadata: any = {
@@ -398,12 +430,6 @@ export const updateLeadStatus = async (
     created_by: user.id,
     metadata: logMetadata,
   });
-
-  // Update total attempts
-  await supabaseAdmin
-    .from('leads_master')
-    .update({ total_attempts: attemptNo })
-    .eq('id', leadId);
 
   return updatedLead;
 };
