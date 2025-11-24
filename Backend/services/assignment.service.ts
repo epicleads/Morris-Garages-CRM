@@ -486,10 +486,11 @@ const assignLeadToUser = async (
   ruleId: string | null,
   ruleType: RuleType
 ) => {
+  const assignedAt = new Date().toISOString();
   const payload = {
     assigned_to: userId,
-    assigned_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    assigned_at: assignedAt,
+    updated_at: assignedAt,
   };
 
   const { error } = await supabaseAdmin
@@ -516,6 +517,8 @@ const assignLeadToUser = async (
   if (logError) {
     throw new Error(`Failed to log auto assignment: ${logError.message}`);
   }
+
+  return { assignedAt };
 };
 
 export const autoAssignLead = async (
@@ -538,7 +541,7 @@ export const autoAssignLead = async (
 
     if (!selectedMember) continue;
 
-    await assignLeadToUser(
+    const result = await assignLeadToUser(
       leadId,
       selectedMember.user_id,
       rule.id,
@@ -558,6 +561,7 @@ export const autoAssignLead = async (
       assignedTo: selectedMember.user_id,
       ruleId: rule.id,
       ruleType: rule.rule_type,
+      assignedAt: result.assignedAt,
     };
   }
 

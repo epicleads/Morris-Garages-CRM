@@ -329,6 +329,7 @@ export const createLead = async (user: SafeUser, input: CreateLeadInput) => {
       const autoResult = await autoAssignLead(data.id, sourceId);
       if (autoResult?.assignedTo) {
         data.assigned_to = autoResult.assignedTo;
+        data.assigned_at = autoResult.assignedAt || data.assigned_at;
       }
     } catch (autoError) {
       // Log but don't block lead creation
