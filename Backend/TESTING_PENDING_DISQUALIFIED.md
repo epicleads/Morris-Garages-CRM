@@ -1,4 +1,4 @@
-# 🧪 Testing Guide — Multi-CRE Pending/Disqualified/Lost/Qualified Scenariosgit
+# 🧪 Testing Guide — Multi-CRE Pending/Disqualified/Lost/Qualified Scenarios
 
 Complete walkthrough for onboarding a new tester: two CREs, two leads, realistic status flows, and verification steps (attempt counts, remarks, IS_LOST, timeline).
 
@@ -196,17 +196,103 @@ Expect: `IS_LOST = true`, attempts incremented, timeline shows entire journey.
 
 ---
 
+## Step 3 — TL Assignment Testing
+
+### 3.1 Manual drag & drop equivalent
+```
+POST http://localhost:5000/admin/leads/assign
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "leadIds": [{{leadA_id}}, {{leadB_id}}],
+  "assignedTo": {{cre1_user_id}},
+  "remarks": "Bulk assign via TL"
+}
+```
+✅ Verify `assigned_to` updated and timeline has `manual_assignment` entry.
+
+### 3.2 View assignment logs
+```
+GET http://localhost:5000/admin/leads/assignments?limit=20
+Authorization: Bearer {{cre_tl_access_token}}
+```
+- Filter by CRE: `?assignedTo={{cre1_user_id}}`
+- Filter by action: `?action=auto_assignment`
+
+---
+
+## Step 4 — Auto Assignment Rules
+
+### 4.1 Create rule (round robin for source 1)
+```
+POST http://localhost:5000/assignment-rules
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "name": "Meta Round Robin",
+  "sourceId": 1,
+  "ruleType": "round_robin",
+  "priority": 1
+}
+```
+
+### 4.2 Add members
+```
+POST http://localhost:5000/assignment-rules/members
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "ruleId": "{{rule_id}}",
+  "userId": {{cre1_user_id}}
+}
+```
+Repeat for CRE2/CRE3 (optionally set `percentage` or `weight`).
+
+### 4.3 Create lead (should auto-assign)
+```
+POST http://localhost:5000/leads
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "fullName": "Auto Assign Test",
+  "phoneNumber": "9000000010",
+  "sourceId": 1
+}
+```
+✅ Verify response `assigned_to` populated and `GET /admin/leads/assignments?action=auto_assignment` shows entry.
+
+### 4.4 Weighted scenario
+Set `rule_type = "weighted"`, add members with `percentage` (e.g., 50/30/20). Create 10 leads and confirm distribution using:
+```
+GET http://localhost:5000/assignment-rules/{{rule_id}}/stats
+Authorization: Bearer {{cre_tl_access_token}}
+```
+Returns rule info, member `assigned_count`, pointer state.
+
+### 4.5 Manual trigger (debug)
+```
+POST http://localhost:5000/assignment-rules/test/assign
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "leadId": {{lead_id}},
+  "sourceId": 1
+}
+```
+
+---
+
 ## Validation Checklist
 
+### Lead Statuses
 - [ ] Pending requires `nextFollowupAt` + `remarks`
 - [ ] Disqualified requires `disqualifyReason`
-- [ ] Lost automatically sets `IS_LOST = true`
+- [ ] Lost sets `IS_LOST = true`
 - [ ] `total_attempts` increments every status change
-- [ ] `Lead_Remarks` captures latest remark
 - [ ] Timeline shows chronological history with attempt numbers
-- [ ] `leads_logs.metadata.pendingReason` stored for pending
-- [ ] `leads_logs.metadata.disqualifyReason` stored for disqualified
-- [ ] `GET /leads/{{id}}/timeline` matches DB values
+
+### Assignment
+- [ ] Manual assignment endpoint works for single/bulk
+- [ ] Assignment logs show manual + auto entries
+- [ ] Round-robin distributes evenly across CREs
+- [ ] Weighted distribution respects percentages
+- [ ] Rule stats endpoint reflects member counts/pointer progression
+- [ ] Auto assignment runs during manual lead creation (source matched)
 
 ---
 
@@ -219,8 +305,9 @@ Expect: `IS_LOST = true`, attempts incremented, timeline shows entire journey.
 | 400 `disqualifyReason required` | Disqualified without reason | Provide reason |
 | Attempts not incrementing | `attemptNo` explicitly set | Remove `attemptNo` (auto increments) |
 | RNR remarks not visible | Check `Leads_Remarks` (only latest shown) | Use timeline/logs for history |
+| Assignment not happening | No active rule/members | Create rule or use manual assign |
+| Weighted counts off | Few test leads | Create bigger batch (10+) to observe ratios |
 
 ---
 
 **Ready to test! 🚀**	Run through each scenario sequentially, capture screenshots or SQL outputs as evidence. Update `PROJECT_STATUS.md` after verifying all flows in Postman.***
-

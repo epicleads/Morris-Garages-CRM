@@ -58,6 +58,7 @@ const updateStatusSchema = z.object({
   nextFollowupAt: z.string().datetime().optional(),
   pendingReason: z.string().optional(),
   disqualifyReason: z.string().optional(),
+  assignedTo: z.coerce.number().int().positive().optional(),
 });
 
 const qualifyLeadSchema = z.object({

@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import authRoutes from './routes/auth.routes';
 import developerRoutes from './routes/developer.routes';
 import leadsRoutes from './routes/leads.routes';
+import assignmentRoutes from './routes/assignment.routes';
 import { env } from './config/env';
 import { ensureDeveloper } from './services/auth.service';
 
@@ -21,6 +22,7 @@ const buildServer = () => {
   fastify.register(authRoutes);
   fastify.register(developerRoutes);
   fastify.register(leadsRoutes);
+  fastify.register(assignmentRoutes);
 
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);
@@ -38,7 +40,14 @@ const buildServer = () => {
 
 export const startServer = async () => {
   const server = buildServer();
-  await ensureDeveloper();
+  try {
+    await ensureDeveloper();
+  } catch (error: any) {
+    server.log.warn(
+      `ensureDeveloper failed: ${error?.message || 'unknown error'}. Continuing startup.`
+    );
+  }
+
   try {
     await server.listen({ port: env.port, host: '0.0.0.0' });
     server.log.info(`Server listening on port ${env.port}`);

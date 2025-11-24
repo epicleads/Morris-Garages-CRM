@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../config/supabase';
 import { SafeUser } from '../types/user';
 import { buildLeadsQuery, buildTodaysFollowupsQuery } from './queryHelpers';
 import { canAccessLead, canViewAllLeads } from './permissions.service';
+import { autoAssignLead } from './assignment.service';
 
 export interface CreateLeadInput {
   fullName: string;
@@ -20,6 +21,7 @@ export interface UpdateLeadStatusInput {
   nextFollowupAt?: string;
   pendingReason?: string;
   disqualifyReason?: string;
+  assignedTo?: number;
 }
 
 export interface QualifyLeadInput {
@@ -321,6 +323,19 @@ export const createLead = async (user: SafeUser, input: CreateLeadInput) => {
     created_by: user.id,
   });
 
+  // Attempt auto-assignment based on source rules
+  if (sourceId) {
+    try {
+      const autoResult = await autoAssignLead(data.id, sourceId);
+      if (autoResult?.assignedTo) {
+        data.assigned_to = autoResult.assignedTo;
+      }
+    } catch (autoError) {
+      // Log but don't block lead creation
+      console.error('Auto assignment failed', autoError);
+    }
+  }
+
   return data;
 };
 
@@ -345,6 +360,30 @@ export const updateLeadStatus = async (
 
   if (input.remarks) {
     updateData.Lead_Remarks = input.remarks;
+  }
+
+  // Allow CRE_TL/Developer to reassign during status update
+  if (
+    input.assignedTo &&
+    canViewAllLeads(user) &&
+    input.assignedTo !== lead.assigned_to
+  ) {
+    const { data: targetUser, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('user_id, full_name, status')
+      .eq('user_id', input.assignedTo)
+      .maybeSingle();
+
+    if (userError) {
+      throw new Error(`Failed to verify assignee: ${userError.message}`);
+    }
+
+    if (!targetUser || targetUser.status === false) {
+      throw new Error(`Assigned user ${input.assignedTo} not found or inactive`);
+    }
+
+    updateData.assigned_to = input.assignedTo;
+    updateData.assigned_at = new Date().toISOString();
   }
 
   // Handle status-specific requirements
@@ -419,6 +458,12 @@ export const updateLeadStatus = async (
 
   if (input.disqualifyReason) {
     logMetadata.disqualifyReason = input.disqualifyReason;
+  }
+
+  if (input.assignedTo && canViewAllLeads(user)) {
+    logMetadata.manualAssignment = {
+      assignedTo: input.assignedTo,
+    };
   }
 
   await supabaseAdmin.from('leads_logs').insert({

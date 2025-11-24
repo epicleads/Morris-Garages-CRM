@@ -44,7 +44,17 @@ export const getUserByUsername = async (username: string): Promise<UserRecord | 
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to fetch user: ${error.message}`);
+    console.error('[Supabase] getUserByUsername error', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    throw new Error(
+      `Failed to fetch user: ${error.message}${
+        error.details ? ` (${error.details})` : ''
+      }`
+    );
   }
 
   return (data as UserRecord | null) ?? null;
