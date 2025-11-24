@@ -141,7 +141,7 @@ export const ensureDeveloperAccount = async (): Promise<void> => {
     await createUser({
       username: env.developerUsername,
       password: env.developerPassword,
-      role: 'Admin',
+      role: 'CRE_TL', // Developer account uses CRE_TL role but identified by username
       fullName: 'MGCRM Developer',
       status: true
     });

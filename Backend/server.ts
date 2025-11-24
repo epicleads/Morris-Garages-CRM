@@ -3,6 +3,7 @@ import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import authRoutes from './routes/auth.routes';
 import developerRoutes from './routes/developer.routes';
+import leadsRoutes from './routes/leads.routes';
 import { env } from './config/env';
 import { ensureDeveloper } from './services/auth.service';
 
@@ -19,6 +20,7 @@ const buildServer = () => {
 
   fastify.register(authRoutes);
   fastify.register(developerRoutes);
+  fastify.register(leadsRoutes);
 
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);
