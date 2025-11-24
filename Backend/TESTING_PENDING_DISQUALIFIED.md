@@ -1,40 +1,84 @@
-# 🧪 Testing Guide — Pending, Disqualified, Lost, Qualified Scenarios
+# 🧪 Testing Guide — Multi-CRE Pending/Disqualified/Lost/Qualified Scenariosgit
 
-Comprehensive Postman tests to verify status transitions, follow-ups, remarks, and attempt counts across leads.
+Complete walkthrough for onboarding a new tester: two CREs, two leads, realistic status flows, and verification steps (attempt counts, remarks, IS_LOST, timeline).
 
 ---
 
 ## Prerequisites
 1. Backend running (`npm run dev`)
-2. Sources populated (`SETUP_SOURCES.md`)
-3. Test users created (`setup_test_users.sql`)
-4. Postman environment set (`base_url`, tokens, etc.)
-5. At least one lead assigned to CRE (`POST /leads`)
+2. Database seeded (`setup_test_users.sql`, `SETUP_SOURCES.md`)
+3. Postman environment set (base_url **`http://localhost:5000`**, tokens, etc.)
+4. Users available:
+   - CRE_TL: `cre_tl_test`
+   - CRE #1: `cre1_test`
+   - CRE #2: `cre2_test`
+5. Tokens already generated (see `TESTING_LEADS_CRUD.md` Step 1)
+6. All requests use `Content-Type: application/json`
 
 ---
 
-## Test Matrix Overview
-
-| Scenario | Endpoint | Expectation |
-|----------|----------|-------------|
-| Pending follow-up workflow | `PATCH /leads/:id/status` | Requires follow-up date + remarks, increments attempts |
-| Disqualified after multiple attempts | `PATCH /leads/:id/status` | Requires disqualify reason, sets `IS_LOST=true`, increments attempts |
-| Lost scenario | `PATCH /leads/:id/status` | Sets `IS_LOST=true`, leaves remarks reason |
-| Pending → Qualified | `PATCH /leads/:id/status`, `POST /leads/:id/qualify` | Verifies attempts, timeline, qualification |
-| Repeated Pending (RNR / no answer) | `PATCH /leads/:id/status` | Verifies remarks stack + attempt count |
+## Overview Flow
+1. CRE_TL creates two leads (Lead A, Lead B)
+2. Assign Lead A → CRE1, Lead B → CRE2
+3. CRE1 handles Pending → Pending → Qualified
+4. CRE2 handles multiple pendings → Disqualified → Reopen → Lost
+5. After each stage, validate DB, timeline, attempts, remarks
 
 ---
 
-## Scenario 1 — Pending Follow-up (RNR / No Answer)
+## Step 1 — Lead Creation (CRE_TL)
+
+### Lead A (for CRE1)
+```
+POST http://localhost:5000/leads
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "fullName": "Lead A - CRE1",
+  "phoneNumber": "9000000001",
+  "sourceId": 1
+}
+```
+➡️ Save `leadA_id`.
+
+### Lead B (for CRE2)
+```
+POST http://localhost:5000/leads
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "fullName": "Lead B - CRE2",
+  "phoneNumber": "9000000002",
+  "sourceId": 1
+}
+```
+➡️ Save `leadB_id`.
+
+---
+
+## Step 2 — Assign Leads (if auto assignment not active)
+```
+PATCH http://localhost:5000/leads/{{leadA_id}}/status
+Authorization: Bearer {{cre_tl_access_token}}
+{
+  "status": "Assigned",
+  "remarks": "Assigned to CRE1",
+  "assignedTo": {{cre1_user_id}}
+}
+```
+Repeat for `leadB_id` with `cre2_user_id`. Confirm via `GET /leads/{{id}}`.
+
+---
+
+## Scenario A — CRE1 (Pending → Pending → Qualified)
+Token: `{{cre1_access_token}}`
 
 ### Steps
-1. Create or assign lead (ID=`{{lead_id}}`)
-2. **Call #1** — lead doesn't pick up → Pending
-3. **Call #2** — still RNR → Pending again
+1. Lead A, attempt #1 → Pending (RNR)
+2. Lead A, attempt #2 → Pending (Callback)
+3. Lead A, attempt #3 → Qualify
 
-### Request 1 (Call #1)
+### Request 1 (Pending #1)
 ```
-PATCH {{base_url}}/leads/{{lead_id}}/status
+PATCH http://localhost:5000/leads/{{leadA_id}}/status
 Authorization: Bearer {{cre_access_token}}
 Content-Type: application/json
 
@@ -46,9 +90,9 @@ Content-Type: application/json
 }
 ```
 
-### Request 2 (Call #2)
+### Request 2 (Pending #2)
 ```
-PATCH {{base_url}}/leads/{{lead_id}}/status
+PATCH http://localhost:5000/leads/{{leadA_id}}/status
 Authorization: Bearer {{cre_access_token}}
 Content-Type: application/json
 
@@ -60,32 +104,50 @@ Content-Type: application/json
 }
 ```
 
+### Request 3 (Qualify)
+```
+POST http://localhost:5000/leads/{{leadA_id}}/qualify
+Authorization: Bearer {{cre_access_token}}
+{
+  "qualifiedCategory": "Hot Lead",
+  "modelInterested": "Hector",
+  "nextFollowupAt": "2024-01-30T14:00:00Z",
+  "remarks": "Customer confirmed interest"
+}
+```
+
 ### Verify
-- `leads_master.total_attempts` increments (2)
-- `Lead_Remarks` shows latest pending remark
-- `leads_logs` has two entries with metadata for reasons
-- `GET /leads/{{id}}/timeline` shows both pending entries chronologically
+- `total_attempts = 3`
+- `status = Qualified`, `is_qualified = true`, `next_followup_at` from qualification
+- `Lead_Remarks = "Customer confirmed interest"`
+- `timeline` shows 2 Pendings + 1 Qualified chronologically
 
 SQL quick check:
 ```sql
 SELECT status, total_attempts, next_followup_at, "Lead_Remarks"
-FROM leads_master WHERE id = {{lead_id}};
+FROM leads_master WHERE id = {{leadA_id}};
 
 SELECT attempt_no, new_status, remarks, metadata
-FROM leads_logs WHERE lead_id = {{lead_id}} ORDER BY created_at;
+FROM leads_logs WHERE lead_id = {{leadA_id}} ORDER BY created_at;
 ```
 
 ---
 
-## Scenario 2 — Pending → Disqualified after multiple attempts
+## Scenario B — CRE2 (Multiple Pendings → Disqualified → Reopen → Lost)
+Token: `{{cre2_access_token}}`
 
 ### Steps
-1. Continue with same lead
-2. **Attempt #3:** Customer rejects, mark `Disqualified`
+1. Lead B — multiple pendings (RNR, CallBack)
+2. Attempt #3 — mark Disqualified (not interested)
+3. CRE_TL reopens to Working
+4. CRE2 finalises as Lost
 
-### Request
+### Pending Attempts
+Follow same Pending payload as Scenario A (use different remarks). After two attempts, continue:
+
+### Disqualify
 ```
-PATCH {{base_url}}/leads/{{lead_id}}/status
+PATCH http://localhost:5000/leads/{{leadB_id}}/status
 Authorization: Bearer {{cre_access_token}}
 Content-Type: application/json
 
@@ -97,12 +159,10 @@ Content-Type: application/json
 ```
 
 ### Expected
-- Response 200 with updated lead
-- `leads_master.status = 'Disqualified'`
-- `leads_master.IS_LOST = true`
-- `total_attempts = previous + 1`
-- `leads_logs` entry with `disqualifyReason` in metadata
-- `next_followup_at` remains from last pending (unless changed)
+- `status = Disqualified`
+- `IS_LOST = true`
+- `total_attempts` incremented
+- `leads_logs.metadata.disqualifyReason = "NotInterested"`
 
 SQL:
 ```sql
@@ -112,114 +172,27 @@ SELECT attempt_no, metadata
 FROM leads_logs WHERE lead_id = {{lead_id}} AND new_status = 'Disqualified';
 ```
 
-### Timeline Check
+### Reopen (CRE_TL)
 ```
-GET {{base_url}}/leads/{{lead_id}}/timeline
-Authorization: Bearer {{cre_access_token}}
-```
-Should show three attempts (Pending, Pending, Disqualified) with `attempt_no` ascending.
-
----
-
-## Scenario 3 — Lost Status (after follow-up expiry)
-
-Mark a different lead as Lost directly (e.g., lead ID `{{lost_lead_id}}`)
-
-```
-PATCH {{base_url}}/leads/{{lost_lead_id}}/status
-Authorization: Bearer {{cre_access_token}}
-Content-Type: application/json
-
-{
-  "status": "Lost",
-  "remarks": "Lead not reachable after 5 attempts - marked lost"
-}
-```
-
-### Expected
-- `status = 'Lost'`
-- `IS_LOST = true`
-- `Lead_Remarks` updated
-- `total_attempts` increments
-
----
-
-## Scenario 4 — Pending multiple times, then Qualified
-
-1. Fresh lead (`{{qual_lead_id}}`)
-2. **Call #1:** Pending (RNR)
-3. **Call #2:** Pending (Spoke, needs follow-up)
-4. **Call #3:** Interested, move to Qualify
-
-### Attempt #1
-```
-PATCH /leads/{{qual_lead_id}}/status
-{
-  "status": "Pending",
-  "remarks": "Attempt #1 - RNR",
-  "nextFollowupAt": "2024-01-26T09:00:00Z",
-  "pendingReason": "RNR"
-}
-```
-
-### Attempt #2
-```
-PATCH /leads/{{qual_lead_id}}/status
-{
-  "status": "Pending",
-  "remarks": "Attempt #2 - Spoke, wants callback tomorrow",
-  "nextFollowupAt": "2024-01-27T11:00:00Z",
-  "pendingReason": "FollowupScheduled"
-}
-```
-
-### Attempt #3 — Qualify
-```
-POST /leads/{{qual_lead_id}}/qualify
-{
-  "qualifiedCategory": "Hot Lead",
-  "modelInterested": "Hector",
-  "nextFollowupAt": "2024-01-30T14:00:00Z",
-  "remarks": "Customer confirmed interest"
-}
-```
-
-### Verify
-- `leads_master.status = 'Qualified'`
-- `is_qualified = true`
-- `next_followup_at = qualification follow-up`
-- `total_attempts = 3`
-- `timeline` shows 2 Pendings + 1 Qualified
-- `leads_logs` attempt_no sequence: 1,2,3
-
----
-
-## Scenario 5 — Disqualified → Re-open (Working) → Lost
-
-1. Lead disqualified previously
-2. Team re-opens (status = Working)
-3. After new attempts, mark Lost
-
-### Reopen
-```
-PATCH /leads/{{lead_id}}/status
+PATCH http://localhost:5000/leads/{{leadB_id}}/status
+Authorization: Bearer {{cre_tl_access_token}}
 {
   "status": "Working",
-  "remarks": "CRE TL reopened lead for second review"
+  "remarks": "Team lead reopened for second review"
 }
 ```
-Expect: `IS_LOST` reset to false.
+Expect: `IS_LOST = false`.
 
-### Final Lost
+### Final Lost (CRE2)
 ```
-PATCH /leads/{{lead_id}}/status
+PATCH http://localhost:5000/leads/{{leadB_id}}/status
+Authorization: Bearer {{cre_access_token}}
 {
   "status": "Lost",
-  "remarks": "Customer bought competitor vehicle"
+  "remarks": "Customer purchased competitor vehicle"
 }
 ```
-
-Expected: `IS_LOST = true`, attempts increment, timeline shows reopen + lost.
+Expect: `IS_LOST = true`, attempts incremented, timeline shows entire journey.
 
 ---
 
