@@ -1,5 +1,10 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { getDashboardStats, assignLeadsToCre } from '../services/admin.service';
+import {
+  getDashboardStats,
+  assignLeadsToCre,
+  getQualifiedLeadsForReview,
+  updateQualifiedLeadFlagsAdmin,
+} from '../services/admin.service';
 
 export const getDashboardStatsController = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -29,4 +34,56 @@ export const assignLeadsController = async (request: FastifyRequest, reply: Fast
         request.log.error(error);
         return reply.status(500).send({ message: error.message || 'Failed to assign leads' });
     }
+};
+
+export const getQualifiedLeadsForReviewController = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    // authGuard already ensures Admin / CRE_TL roles; just fetch data
+    const items = await getQualifiedLeadsForReview();
+    return reply.send({ items });
+  } catch (error: any) {
+    request.log.error(error);
+    return reply
+      .status(500)
+      .send({ message: error.message || 'Failed to fetch qualified leads for review' });
+  }
+};
+
+export const updateQualifiedLeadFlagsAdminController = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const leadId = Number((request.params as any).leadId);
+    if (!leadId || Number.isNaN(leadId)) {
+      return reply.status(400).send({ message: 'Invalid leadId' });
+    }
+
+    const { testDrive, booked, retailed } = request.body as {
+      testDrive?: boolean | null;
+      booked?: boolean | null;
+      retailed?: boolean | null;
+    };
+
+    if (
+      testDrive === undefined &&
+      booked === undefined &&
+      retailed === undefined
+    ) {
+      return reply.status(400).send({
+        message: 'At least one of testDrive, booked, or retailed must be provided',
+      });
+    }
+
+    await updateQualifiedLeadFlagsAdmin(leadId, { testDrive, booked, retailed });
+    return reply.send({ message: 'Qualified lead flags updated successfully' });
+  } catch (error: any) {
+    request.log.error(error);
+    return reply.status(500).send({
+      message: error.message || 'Failed to update qualified lead flags',
+    });
+  }
 };

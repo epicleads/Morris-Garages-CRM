@@ -39,6 +39,10 @@ export interface QualifyLeadInput {
   leadCategory?: string; // Optional - Lead category
   nextFollowupAt: string; // REQUIRED - Next follow-up date/time (ISO datetime)
   remarks?: string; // Optional - Additional remarks
+  branchId?: number; // Optional - Branch to route qualified lead to
+  tlId?: number; // Optional - Team Lead user_id for this lead
+  rmId?: number; // Optional - Relationship Manager user_id for this lead
+  dmsId?: string; // Optional - DMS reference id
 }
 
 export interface UpdateQualificationInput {
@@ -56,6 +60,10 @@ export interface UpdateQualificationInput {
   leadCategory?: string; // Optional - Lead category
   nextFollowupAt?: string; // Optional - Next follow-up date/time (ISO datetime)
   remarks?: string; // Optional - Additional remarks
+  branchId?: number; // Optional - Branch to route qualified lead to
+  tlId?: number; // Optional - Team Lead user_id for this lead
+  rmId?: number; // Optional - Relationship Manager user_id for this lead
+  dmsId?: string; // Optional - DMS reference id
 }
 
 export interface LeadFilters {
@@ -515,6 +523,55 @@ export const qualifyLead = async (
   // Get lead
   const lead = await getLeadById(user, leadId);
 
+  // Optional validation: if branch/TL/RM provided, ensure they are consistent
+  if (input.branchId) {
+    const { data: branch, error: branchError } = await supabaseAdmin
+      .from('branches')
+      .select('id, is_active')
+      .eq('id', input.branchId)
+      .maybeSingle();
+    if (branchError) {
+      throw new Error(`Failed to verify branch: ${branchError.message}`);
+    }
+    if (!branch) {
+      throw new Error('Invalid branchId: branch not found');
+    }
+  }
+
+  if (input.tlId) {
+    const { data: tlMember, error: tlError } = await supabaseAdmin
+      .from('branch_members')
+      .select('id')
+      .eq('branch_id', input.branchId || null)
+      .eq('user_id', input.tlId)
+      .eq('role', 'TL')
+      .eq('is_active', true)
+      .maybeSingle();
+    if (tlError) {
+      throw new Error(`Failed to verify TL: ${tlError.message}`);
+    }
+    if (!tlMember) {
+      throw new Error('Invalid tlId for the given branch');
+    }
+  }
+
+  if (input.rmId) {
+    const { data: rmMember, error: rmError } = await supabaseAdmin
+      .from('branch_members')
+      .select('id')
+      .eq('branch_id', input.branchId || null)
+      .eq('user_id', input.rmId)
+      .eq('role', 'RM')
+      .eq('is_active', true)
+      .maybeSingle();
+    if (rmError) {
+      throw new Error(`Failed to verify RM: ${rmError.message}`);
+    }
+    if (!rmMember) {
+      throw new Error('Invalid rmId for the given branch');
+    }
+  }
+
   // Check if lead is already qualified - throw error (use update endpoint instead)
   if (lead.is_qualified) {
     const { data: existingQual } = await supabaseAdmin
@@ -583,6 +640,10 @@ export const qualifyLead = async (
       remarks: input.remarks || null, // Optional
       qualified_by: user.id,
       qualified_at: new Date().toISOString(),
+      branch_id: input.branchId || null,
+      tl_id: input.tlId || null,
+      rm_id: input.rmId || null,
+      dms_id: input.dmsId || null,
     })
     .select()
     .single();
@@ -705,6 +766,18 @@ export const updateQualification = async (
   }
   if (input.remarks !== undefined) {
     updateData.remarks = input.remarks;
+  }
+  if (input.branchId !== undefined) {
+    updateData.branch_id = input.branchId || null;
+  }
+  if (input.tlId !== undefined) {
+    updateData.tl_id = input.tlId || null;
+  }
+  if (input.rmId !== undefined) {
+    updateData.rm_id = input.rmId || null;
+  }
+  if (input.dmsId !== undefined) {
+    updateData.dms_id = input.dmsId || null;
   }
 
   // Update leads_master (denormalized fields) - only if nextFollowupAt or remarks changed
@@ -958,6 +1031,8 @@ export const getLeadTimeline = async (user: SafeUser, leadId: number) => {
       currentStatus: lead?.status || 'Unknown',
       assignedTo: assignedUser?.full_name || null,
     },
+    // Expose raw qualification record so admin UI can show full details
+    qualification,
   };
 };
 

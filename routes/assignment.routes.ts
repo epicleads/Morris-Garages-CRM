@@ -14,6 +14,7 @@ import {
   ruleStatsController,
   getUnassignedLeadsBySourceController,
   bulkAssignBySourceController,
+  autoAssignBySourceController,
 } from '../controllers/assignment.controller';
 
 const assignmentRoutes = async (fastify: FastifyInstance) => {
@@ -28,6 +29,9 @@ const assignmentRoutes = async (fastify: FastifyInstance) => {
 
     // Bulk assign all unassigned leads from a source to a CRE
     instance.post('/assignments/bulk-assign-by-source', bulkAssignBySourceController);
+
+    // Auto-assign all unassigned leads from a source using rules
+    instance.post('/assignments/auto-assign-by-source', autoAssignBySourceController);
 
     // Assignment rules CRUD
     instance.post('/assignment-rules', createAssignmentRuleController);

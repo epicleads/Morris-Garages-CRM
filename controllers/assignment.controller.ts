@@ -512,3 +512,66 @@ export const bulkAssignBySourceController = async (
     return reply.status(500).send({ message: error.message });
   }
 };
+
+/**
+ * Auto-assign all unassigned leads from a source using assignment rules
+ * POST /assignments/auto-assign-by-source
+ */
+export const autoAssignBySourceController = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const user = request.authUser!;
+    ensureManager(user);
+
+    const schema = z.object({
+      sourceId: z.number().int().positive(),
+    });
+
+    const body = schema.parse(request.body);
+    const { supabaseAdmin } = await import('../config/supabase');
+
+    // Get all unassigned leads for this source
+    const { data: leads, error: leadsError } = await supabaseAdmin
+      .from('leads_master')
+      .select('id')
+      .eq('source_id', body.sourceId)
+      .is('assigned_to', null)
+      .eq('status', 'New');
+
+    if (leadsError) {
+      throw new Error(`Failed to fetch leads: ${leadsError.message}`);
+    }
+
+    if (!leads || leads.length === 0) {
+      return reply.send({
+        message: 'No unassigned leads found for this source',
+        assignedCount: 0,
+      });
+    }
+
+    let assignedCount = 0;
+
+    for (const lead of leads) {
+      const result = await autoAssignLead(lead.id, body.sourceId);
+      if (result?.assignedTo) {
+        assignedCount += 1;
+      }
+    }
+
+    return reply.send({
+      message: `Auto-assignment completed. Assigned ${assignedCount} leads.`,
+      assignedCount,
+    });
+  } catch (error: any) {
+    request.log.error(error);
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({
+        message: 'Validation failed',
+        errors: error.errors,
+      });
+    }
+    return reply.status(500).send({ message: error.message });
+  }
+};

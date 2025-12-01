@@ -6,6 +6,8 @@ import developerRoutes from './routes/developer.routes';
 import leadsRoutes from './routes/leads.routes';
 import assignmentRoutes from './routes/assignment.routes';
 import assignmentConfigRoutes from './routes/assignment-config.routes';
+import sourcesRoutes from './routes/sources.routes';
+import branchesRoutes from './routes/branches.routes';
 import creRoutes from './routes/cre.routes';
 import usersRoutes from './routes/users.routes';
 import { adminRoutes } from './routes/admin.routes';
@@ -28,9 +30,11 @@ const buildServer = () => {
   fastify.register(leadsRoutes);
   fastify.register(assignmentRoutes);
   fastify.register(assignmentConfigRoutes);
+  fastify.register(sourcesRoutes);
   fastify.register(creRoutes);
   fastify.register(usersRoutes);
   fastify.register(adminRoutes);
+  fastify.register(branchesRoutes);
 
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);

@@ -77,6 +77,10 @@ const qualifyLeadSchema = z.object({
   lead_category: z.string().optional(),
   next_followup_at: z.string().datetime('next_followup_at is required and must be a valid ISO datetime (e.g., 2024-01-16T10:00:00Z)'),
   remarks: z.string().optional(),
+  branch_id: z.coerce.number().int().positive().optional(),
+  tl_id: z.coerce.number().int().positive().optional(),
+  rm_id: z.coerce.number().int().positive().optional(),
+  dms_id: z.string().optional(),
 });
 
 // Schema for updating qualification (all fields optional - validation done manually)
@@ -95,6 +99,10 @@ const updateQualificationSchema = z.object({
   leadCategory: z.string().optional(),
   nextFollowupAt: z.string().datetime().optional(),
   remarks: z.string().optional(),
+  branchId: z.coerce.number().int().positive().optional(),
+  tlId: z.coerce.number().int().positive().optional(),
+  rmId: z.coerce.number().int().positive().optional(),
+  dmsId: z.string().optional(),
 });
 
 /**
@@ -151,6 +159,9 @@ export const qualifyLeadController = async (
       leadCategory: body.lead_category,
       nextFollowupAt: body.next_followup_at,
       remarks: body.remarks,
+      branchId: body.branch_id,
+      tlId: body.tl_id,
+      rmId: body.rm_id,
     };
 
     const qualification = await qualifyLead(user, id, serviceInput);
@@ -225,6 +236,7 @@ export const getLeadController = async (
       lead,
       timeline: timeline.timeline,
       summary: timeline.summary,
+      qualification: timeline.qualification || null,
     });
   } catch (error: any) {
     request.log.error(error);
