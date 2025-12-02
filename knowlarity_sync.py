@@ -33,10 +33,8 @@ def log(message: str) -> None:
 
 # ----------------- ENV + CLIENT SETUP -----------------
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv(
-    "SUPABASE_SERVICE_ROLE_KEY"
-)
+SUPABASE_URL = "https://qwxdzfahpezjqgtnbtaz.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3eGR6ZmFocGV6anFndG5idGF6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzYyNTEyMiwiZXhwIjoyMDc5MjAxMTIyfQ.2YcFjYomjU4gRn3hJghAP8ntIsV9ZZypHUsEyYWkspk"
 
 KNOWLARITY_API_URL = os.getenv(
     "KNOWLARITY_API_URL", "https://kpi.knowlarity.com/Basic/v1/account/calllog"

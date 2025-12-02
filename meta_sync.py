@@ -33,8 +33,8 @@ if not env_loaded:
     # Still try default location (current working directory)
     load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+SUPABASE_URL = "https://qwxdzfahpezjqgtnbtaz.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3eGR6ZmFocGV6anFndG5idGF6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzYyNTEyMiwiZXhwIjoyMDc5MjAxMTIyfQ.2YcFjYomjU4gRn3hJghAP8ntIsV9ZZypHUsEyYWkspk"
 
 META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v20.0")
 META_API_BASE = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
