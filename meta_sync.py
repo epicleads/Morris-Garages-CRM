@@ -14,7 +14,19 @@ from datetime import timezone
 
 # ----------------- ENV + CLIENT SETUP -----------------
 
-load_dotenv()
+# Load .env file if present (local dev)
+# Try multiple locations: root directory and Backend directory
+import pathlib
+script_dir = pathlib.Path(__file__).parent.absolute()
+env_loaded = False
+for env_path in [script_dir / ".env", script_dir / "Backend" / ".env"]:
+    if env_path.exists():
+        load_dotenv(env_path)
+        env_loaded = True
+        break
+if not env_loaded:
+    # Still try default location (current working directory)
+    load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")

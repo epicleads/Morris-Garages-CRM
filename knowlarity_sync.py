@@ -60,7 +60,7 @@ if not KNOWLARITY_API_KEY or not KNOWLARITY_AUTH_TOKEN:
     
     error_msg = (
         f"Missing {', '.join(missing)} in environment.\n"
-        f"Please create a .env file in the root directory (D:\\MGCRM\\.env) with:\n"
+        f"Please create a .env file in the root directory (Morris-Garages-CRM/.env) with:\n"
         f"  KNOWLARITY_API_KEY=your_api_key\n"
         f"  KNOWLARITY_AUTH_TOKEN=your_auth_token\n"
         f"\nTried loading .env from:\n"
