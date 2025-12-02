@@ -6,7 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only server.ts",
-    "start": "node server.js",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "start:dev": "node server.js",
     "lint": "eslint . --ext .ts"
   },
   "dependencies": {
