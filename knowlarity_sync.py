@@ -36,12 +36,10 @@ def log(message: str) -> None:
 SUPABASE_URL = "https://qwxdzfahpezjqgtnbtaz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3eGR6ZmFocGV6anFndG5idGF6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzYyNTEyMiwiZXhwIjoyMDc5MjAxMTIyfQ.2YcFjYomjU4gRn3hJghAP8ntIsV9ZZypHUsEyYWkspk"
 
-KNOWLARITY_API_URL = os.getenv(
-    "KNOWLARITY_API_URL", "https://kpi.knowlarity.com/Basic/v1/account/calllog"
-)
-KNOWLARITY_API_KEY = os.getenv("KNOWLARITY_API_KEY")
-KNOWLARITY_AUTH_TOKEN = os.getenv("KNOWLARITY_AUTH_TOKEN")
-KNOWLARITY_CHANNEL = os.getenv("KNOWLARITY_CHANNEL", "Basic")
+KNOWLARITY_API_URL = "https://kpi.knowlarity.com/Basic/v1/account/calllog"
+KNOWLARITY_API_KEY = "HDwHGppu368tRViUEzBdn2NxYHalJxfLaz2FrSUt"
+KNOWLARITY_AUTH_TOKEN = "8eb75459-8d97-4b21-a731-0323f8ee13c7"
+KNOWLARITY_CHANNEL = "Basic"
 
 _lookback = os.getenv("KNOWLARITY_SYNC_LOOKBACK_MINUTES", "15")
 LOOKBACK_MINUTES = int(_lookback) if _lookback and _lookback.strip() else 15
@@ -52,24 +50,7 @@ PAGE_SIZE = int(_page_size) if _page_size and _page_size.strip() else 100
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/ROLE_KEY")
 
-if not KNOWLARITY_API_KEY or not KNOWLARITY_AUTH_TOKEN:
-    missing = []
-    if not KNOWLARITY_API_KEY:
-        missing.append("KNOWLARITY_API_KEY")
-    if not KNOWLARITY_AUTH_TOKEN:
-        missing.append("KNOWLARITY_AUTH_TOKEN")
-    
-    error_msg = (
-        f"Missing {', '.join(missing)} in environment.\n"
-        f"Please create a .env file in the root directory (Morris-Garages-CRM/.env) with:\n"
-        f"  KNOWLARITY_API_KEY=your_api_key\n"
-        f"  KNOWLARITY_AUTH_TOKEN=your_auth_token\n"
-        f"\nTried loading .env from:\n"
-        f"  - {script_dir / '.env'}\n"
-        f"  - {script_dir / 'Backend' / '.env'}\n"
-        f"  - Current working directory"
-    )
-    raise RuntimeError(error_msg)
+# Validation removed as credentials are hardcoded
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 

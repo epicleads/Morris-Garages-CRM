@@ -40,8 +40,9 @@ META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v20.0")
 META_API_BASE = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
 
 # Strip whitespace from environment variables to prevent API errors
-META_PAGE_ID = os.getenv("META_PAGE_ID", "").strip() or None
-META_PAGE_ACCESS_TOKEN = os.getenv("META_PAGE_ACCESS_TOKEN", "").strip() or None
+# Hardcoded Meta credentials
+META_PAGE_ID = "254390997752927"
+META_PAGE_ACCESS_TOKEN = "EAAoaZA8sldNsBP1C53tqZBx88TbzUEzrQcmK06fZBYnFdtT4y9d87MEjx4TUy1ZA6VvEyZBXyZC4qYGZCy0KQGsop4HAyZBtnCZA6bd837D8arpC5kOM7hK9ggAbh1DSd09h0ZCIPRNk9Wxo0mRF2RKXDofHStm4AXIeZBQ7nNXHcEThXpZBb0jFhtHZCn8B7FNuowfCKZChefVD4ZD"
 
 # Default to 24 hours ago if not specified in environment
 # Treat empty strings as None to ensure 24-hour default works
