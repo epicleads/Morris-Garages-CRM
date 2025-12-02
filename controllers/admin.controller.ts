@@ -68,6 +68,11 @@ export const updateQualifiedLeadFlagsAdminController = async (
       retailed?: boolean | null;
     };
 
+    request.log.info(
+      { leadId, body: request.body },
+      'updateQualifiedLeadFlagsAdminController: incoming payload'
+    );
+
     if (
       testDrive === undefined &&
       booked === undefined &&
@@ -79,6 +84,11 @@ export const updateQualifiedLeadFlagsAdminController = async (
     }
 
     await updateQualifiedLeadFlagsAdmin(leadId, { testDrive, booked, retailed });
+
+    request.log.info(
+      { leadId, testDrive, booked, retailed },
+      'updateQualifiedLeadFlagsAdminController: update successful'
+    );
     return reply.send({ message: 'Qualified lead flags updated successfully' });
   } catch (error: any) {
     request.log.error(error);

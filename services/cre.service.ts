@@ -603,15 +603,35 @@ export const getQualifiedLeads = async (
   const limit = options?.limit ?? 50;
   const offset = (page - 1) * limit;
 
+  // Only show qualified leads that are NOT retailed yet.
+  // 1) Find all lead_ids where RETAILED is TRUE
+  const { data: retailedRows, error: retailedError } = await supabaseAdmin
+    .from('leads_qualification')
+    .select('lead_id, RETAILED');
+
+  if (retailedError) {
+    throw new Error(`Failed to fetch retailed flags: ${retailedError.message}`);
+  }
+
+  const retailedIds = (retailedRows || [])
+    .filter((r) => r.RETAILED === true)
+    .map((r) => r.lead_id)
+    .filter((id): id is number => typeof id === 'number');
+
   let query = supabaseAdmin
     .from('leads_master')
-    .select(`
+    .select(
+      `
       *,
       source:sources(id, display_name, source_type)
-    `, { count: 'exact' })
+    `,
+      { count: 'exact' }
+    )
     .eq('assigned_to', userId)
     .eq('is_qualified', true)
     .is('IS_LOST', null)
+    // Exclude retailed leads (those will appear in "Won")
+    .not('id', 'in', `(${retailedIds.join(',') || 'NULL'})`)
     .order('updated_at', { ascending: false });
 
   query = query.range(offset, offset + limit - 1);
@@ -645,9 +665,34 @@ export const getWonLeads = async (
   const limit = options?.limit ?? 50;
   const offset = (page - 1) * limit;
 
+  // First, find qualified leads where RETAILED is true
+  const { data: qualRows, error: qualError } = await supabaseAdmin
+    .from('leads_qualification')
+    .select('lead_id')
+    .eq('RETAILED', true);
+
+  if (qualError) {
+    throw new Error(`Failed to fetch won leads (qualification): ${qualError.message}`);
+  }
+
+  const leadIds = (qualRows || [])
+    .map((q) => q.lead_id)
+    .filter((id): id is number => typeof id === 'number');
+
+  if (!leadIds.length) {
+    return {
+      leads: [],
+      total: 0,
+      page,
+      limit,
+      totalPages: 0,
+    };
+  }
+
   let query = supabaseAdmin
     .from('leads_master')
-    .select(`
+    .select(
+      `
       *,
       source:sources(id, display_name, source_type),
       qualification:leads_qualification!inner(
@@ -664,6 +709,14 @@ export const getWonLeads = async (
     .is('IS_LOST', null)
     .eq('qualification.RETAILED', true)
     .eq('qualification.qualified_by', userId)
+      source:sources(id, display_name, source_type)
+    `,
+      { count: 'exact' }
+    )
+    .eq('assigned_to', userId)
+    .eq('is_qualified', true)
+    .eq('IS_LOST', false)
+    .in('id', leadIds)
     .order('updated_at', { ascending: false });
 
   query = query.range(offset, offset + limit - 1);
@@ -801,28 +854,67 @@ export const getFilterCounts = async (userId: number): Promise<FilterCounts> => 
       .is('IS_LOST', null)
       .then(({ count }) => count ?? 0),
 
-    // Qualified: is_qualified=true, IS_LOST=null
-    supabaseAdmin
-      .from('leads_master')
-      .select('id', { count: 'exact', head: true })
-      .eq('assigned_to', userId)
-      .eq('is_qualified', true)
-      .is('IS_LOST', null)
-      .then(({ count }) => count ?? 0),
+    // Qualified: is_qualified=true, IS_LOST=null, and NOT retailed yet
+    (async () => {
+      const { data: qualRows, error: qualError } = await supabaseAdmin
+        .from('leads_qualification')
+        .select('lead_id, RETAILED');
 
-    // Won: RETAILED=true in leads_qualification, qualified_by=userId
-    supabaseAdmin
-      .from('leads_master')
-      .select(`
-        id,
-        qualification:leads_qualification!inner(RETAILED, qualified_by)
-      `, { count: 'exact', head: true })
-      .eq('assigned_to', userId)
-      .eq('is_qualified', true)
-      .is('IS_LOST', null)
-      .eq('qualification.RETAILED', true)
-      .eq('qualification.qualified_by', userId)
-      .then(({ count }) => count ?? 0),
+      if (qualError) {
+        throw qualError;
+      }
+
+      const retailedIds = (qualRows || [])
+        .filter((r) => r.RETAILED === true)
+        .map((r) => r.lead_id)
+        .filter((id): id is number => typeof id === 'number');
+
+      const { count, error } = await supabaseAdmin
+        .from('leads_master')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', userId)
+        .eq('is_qualified', true)
+        .is('IS_LOST', null)
+        .not('id', 'in', `(${retailedIds.join(',') || 'NULL'})`);
+
+      if (error) {
+        throw error;
+      }
+
+      return count ?? 0;
+    })(),
+
+    // Won: RETAILED=true in leads_qualification and lead is assigned to user, not lost
+    (async () => {
+      const { data: qualRows, error: qualError } = await supabaseAdmin
+        .from('leads_qualification')
+        .select('lead_id')
+        .eq('RETAILED', true);
+
+      if (qualError) {
+        throw qualError;
+      }
+
+      const leadIds = (qualRows || [])
+        .map((q) => q.lead_id)
+        .filter((id): id is number => typeof id === 'number');
+
+      if (!leadIds.length) return 0;
+
+      const { count, error } = await supabaseAdmin
+        .from('leads_master')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', userId)
+        .eq('is_qualified', true)
+        .eq('IS_LOST', false)
+        .in('id', leadIds);
+
+      if (error) {
+        throw error;
+      }
+
+      return count ?? 0;
+    })(),
 
     // Lost: is_qualified=true, IS_LOST=true
     supabaseAdmin

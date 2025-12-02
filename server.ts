@@ -69,7 +69,8 @@ export const startServer = async () => {
   }
 };
 
-if (require.main === module) {
+// Start server if this file is run directly
+if (require.main === module || process.env.NODE_ENV === 'production') {
   startServer();
 }
 

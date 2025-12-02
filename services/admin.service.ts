@@ -5,6 +5,8 @@ export interface AdminDashboardStats {
   unassignedLeads: number;
   activeAssignments: number;
   freshLeads: number;
+  totalLeads: number;
+  qualifiedLeads: number;
   conversionRate: number;
   conversion_rate_percent_string: string;
 }
@@ -91,8 +93,10 @@ export const getDashboardStats = async (): Promise<AdminDashboardStats> => {
     unassignedLeads,
     activeAssignments,
     freshLeads,
+    totalLeads,
+    qualifiedLeads,
     conversionRate,
-    conversion_rate_percent_string
+    conversion_rate_percent_string,
   };
 };
 
