@@ -336,6 +336,8 @@ export const markLeadPending = async (
 export interface FilteredLeadsOptions {
   page?: number;
   limit?: number;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface FilteredLeadsResponse {
@@ -367,6 +369,14 @@ export const getFreshUntouchedLeads = async (
     .eq('status', 'New')
     .eq('is_qualified', false)
     .order('created_at', { ascending: false });
+
+  if (options?.startDate) {
+    query = query.gte('created_at', options.startDate);
+  }
+
+  if (options?.endDate) {
+    query = query.lte('created_at', options.endDate);
+  }
 
   query = query.range(offset, offset + limit - 1);
 
@@ -410,6 +420,14 @@ export const getFreshCalledLeads = async (
     .eq('is_qualified', false)
     .is('IS_LOST', null)
     .order('updated_at', { ascending: false });
+
+  if (options?.startDate) {
+    query = query.gte('created_at', options.startDate);
+  }
+
+  if (options?.endDate) {
+    query = query.lte('created_at', options.endDate);
+  }
 
   query = query.range(offset, offset + limit - 1);
 
@@ -541,7 +559,16 @@ export const getPendingLeads = async (
     .eq('status', 'Pending')
     .eq('is_qualified', false)
     .is('IS_LOST', null)
+    .is('IS_LOST', null)
     .order('updated_at', { ascending: false });
+
+  if (options?.startDate) {
+    query = query.gte('next_followup_at', options.startDate);
+  }
+
+  if (options?.endDate) {
+    query = query.lte('next_followup_at', options.endDate);
+  }
 
   query = query.range(offset, offset + limit - 1);
 
@@ -667,6 +694,21 @@ export const getWonLeads = async (
     .select(
       `
       *,
+      source:sources(id, display_name, source_type),
+      qualification:leads_qualification!inner(
+        id,
+        qualified_by,
+        RETAILED,
+        TEST_DRIVE,
+        BOOKED,
+        qualified_at
+      )
+    `, { count: 'exact' })
+    .eq('assigned_to', userId)
+    .eq('is_qualified', true)
+    .is('IS_LOST', null)
+    .eq('qualification.RETAILED', true)
+    .eq('qualification.qualified_by', userId)
       source:sources(id, display_name, source_type)
     `,
       { count: 'exact' }
