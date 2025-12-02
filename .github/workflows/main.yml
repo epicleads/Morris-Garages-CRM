@@ -1,0 +1,95 @@
+name: Lead Sync (Meta + Knowlarity)
+
+on:
+  # Meta: every 4 hours
+  schedule:
+    - cron: "0 */4 * * *"
+    # Knowlarity: every 15 minutes
+    - cron: "*/15 * * * *"
+
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+jobs:
+  # --------------------------- META SYNC JOB ----------------------------------
+  sync-meta-leads:
+    # Run if:
+    # - manually triggered (workflow_dispatch), OR
+    # - this is the 4-hour schedule event
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 */4 * * *'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests supabase python-dotenv urllib3
+
+      - name: Run meta_sync.py
+        env:
+          # Required environment variables
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
+          # Optional: Minimum created date (ISO format). If not set, defaults to past 24 hours
+          META_MIN_CREATED_AT: ${{ secrets.META_MIN_CREATED_AT }}
+          # Optional: Meta Graph API version (defaults to v20.0)
+          META_GRAPH_VERSION: ${{ secrets.META_GRAPH_VERSION }}
+          # Optional: Override sync since date (ISO format) - takes precedence over META_MIN_CREATED_AT
+          META_SYNC_SINCE_OVERRIDE: ${{ secrets.META_SYNC_SINCE_OVERRIDE }}
+          # Optional: Comma-separated form IDs to sync (if not provided, auto-discovers)
+          META_FORM_IDS_DEFAULT: ${{ secrets.META_FORM_IDS_DEFAULT }}
+        run: |
+          echo "Running Meta Lead Sync..."
+          python meta_sync.py
+
+  # ------------------------ KNOWLARITY SYNC JOB -------------------------------
+  sync-knowlarity-calls:
+    # Run if:
+    # - manually triggered (workflow_dispatch), OR
+    # - this is the 15-min schedule event
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests supabase python-dotenv
+
+      - name: Run knowlarity_sync.py
+        env:
+          # Required: Supabase credentials
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Required: Knowlarity API credentials
+          KNOWLARITY_API_KEY: ${{ secrets.KNOWLARITY_API_KEY }}
+          KNOWLARITY_AUTH_TOKEN: ${{ secrets.KNOWLARITY_AUTH_TOKEN }}
+          # Optional: Knowlarity API URL (defaults to https://kpi.knowlarity.com/Basic/v1/account/calllog)
+          KNOWLARITY_API_URL: ${{ secrets.KNOWLARITY_API_URL }}
+          # Optional: Channel (defaults to "Basic")
+          KNOWLARITY_CHANNEL: ${{ secrets.KNOWLARITY_CHANNEL }}
+          # Optional: Lookback minutes (defaults to 15)
+          KNOWLARITY_SYNC_LOOKBACK_MINUTES: ${{ secrets.KNOWLARITY_SYNC_LOOKBACK_MINUTES }}
+          # Optional: Page size (defaults to 100)
+          KNOWLARITY_SYNC_PAGE_SIZE: ${{ secrets.KNOWLARITY_SYNC_PAGE_SIZE }}
+        run: |
+          echo "Running Knowlarity Call Sync..."
+          python knowlarity_sync.py

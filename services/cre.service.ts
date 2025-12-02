@@ -622,11 +622,21 @@ export const getWonLeads = async (
     .from('leads_master')
     .select(`
       *,
-      source:sources(id, display_name, source_type)
+      source:sources(id, display_name, source_type),
+      qualification:leads_qualification!inner(
+        id,
+        qualified_by,
+        RETAILED,
+        TEST_DRIVE,
+        BOOKED,
+        qualified_at
+      )
     `, { count: 'exact' })
     .eq('assigned_to', userId)
     .eq('is_qualified', true)
-    .eq('IS_LOST', false)
+    .is('IS_LOST', null)
+    .eq('qualification.RETAILED', true)
+    .eq('qualification.qualified_by', userId)
     .order('updated_at', { ascending: false });
 
   query = query.range(offset, offset + limit - 1);
@@ -773,13 +783,18 @@ export const getFilterCounts = async (userId: number): Promise<FilterCounts> => 
       .is('IS_LOST', null)
       .then(({ count }) => count ?? 0),
 
-    // Won: is_qualified=true, IS_LOST=false
+    // Won: RETAILED=true in leads_qualification, qualified_by=userId
     supabaseAdmin
       .from('leads_master')
-      .select('id', { count: 'exact', head: true })
+      .select(`
+        id,
+        qualification:leads_qualification!inner(RETAILED, qualified_by)
+      `, { count: 'exact', head: true })
       .eq('assigned_to', userId)
       .eq('is_qualified', true)
-      .eq('IS_LOST', false)
+      .is('IS_LOST', null)
+      .eq('qualification.RETAILED', true)
+      .eq('qualification.qualified_by', userId)
       .then(({ count }) => count ?? 0),
 
     // Lost: is_qualified=true, IS_LOST=true
