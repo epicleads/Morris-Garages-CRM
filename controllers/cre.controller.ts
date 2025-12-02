@@ -437,8 +437,22 @@ export const updateQualifiedLeadStatusController = async (
   }
 
   try {
+    request.log.info(
+      { body: request.body },
+      'updateQualifiedLeadStatusController: incoming payload'
+    );
+
     const body = updateQualifiedLeadStatusSchema.parse(request.body);
+    request.log.info(
+      { userId: user.id, leadId: body.lead_id, body },
+      'updateQualifiedLeadStatusController: parsed payload'
+    );
+
     await updateQualifiedLeadStatus(user.id, body);
+    request.log.info(
+      { userId: user.id, leadId: body.lead_id },
+      'updateQualifiedLeadStatusController: update successful'
+    );
     return reply.send({ message: 'Qualified lead status updated successfully' });
   } catch (error: any) {
     if (error instanceof z.ZodError) {

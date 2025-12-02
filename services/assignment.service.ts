@@ -237,7 +237,7 @@ export const listAssignmentRules = async (actor: SafeUser) => {
 
   const { data, error } = await supabaseAdmin
     .from('assignment_rules')
-    .select(`${RULE_SELECT}, members:rule_members(*)`)
+    .select(`${RULE_SELECT}, members:rule_members(${MEMBER_SELECT})`)
     .order('priority', { ascending: true });
 
   if (error) {
