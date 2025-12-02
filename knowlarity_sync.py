@@ -45,8 +45,11 @@ KNOWLARITY_API_KEY = os.getenv("KNOWLARITY_API_KEY")
 KNOWLARITY_AUTH_TOKEN = os.getenv("KNOWLARITY_AUTH_TOKEN")
 KNOWLARITY_CHANNEL = os.getenv("KNOWLARITY_CHANNEL", "Basic")
 
-LOOKBACK_MINUTES = int(os.getenv("KNOWLARITY_SYNC_LOOKBACK_MINUTES", "15"))
-PAGE_SIZE = int(os.getenv("KNOWLARITY_SYNC_PAGE_SIZE", "100"))
+_lookback = os.getenv("KNOWLARITY_SYNC_LOOKBACK_MINUTES", "15")
+LOOKBACK_MINUTES = int(_lookback) if _lookback and _lookback.strip() else 15
+
+_page_size = os.getenv("KNOWLARITY_SYNC_PAGE_SIZE", "100")
+PAGE_SIZE = int(_page_size) if _page_size and _page_size.strip() else 100
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/ROLE_KEY")
