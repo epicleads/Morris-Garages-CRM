@@ -18,13 +18,18 @@ from datetime import timezone
 # Try multiple locations: root directory and Backend directory
 import pathlib
 script_dir = pathlib.Path(__file__).parent.absolute()
+print(f"DEBUG: Script directory: {script_dir}")
+
 env_loaded = False
 for env_path in [script_dir / ".env", script_dir / "Backend" / ".env"]:
+    print(f"DEBUG: Checking for .env at: {env_path}")
     if env_path.exists():
+        print(f"DEBUG: Found .env at {env_path}, loading...")
         load_dotenv(env_path)
         env_loaded = True
         break
 if not env_loaded:
+    print("DEBUG: No .env found in explicit paths, trying default load_dotenv()")
     # Still try default location (current working directory)
     load_dotenv()
 
@@ -49,6 +54,12 @@ MIN_ACCEPTED_DATE = None
 
 AUTO_SENTINEL = "AUTO"
 
+# Debug logging for environment variables
+print(f"DEBUG: SUPABASE_URL present: {bool(SUPABASE_URL)}")
+print(f"DEBUG: SUPABASE_KEY present: {bool(SUPABASE_KEY)}")
+print(f"DEBUG: META_PAGE_ID present: {bool(META_PAGE_ID)}")
+print(f"DEBUG: META_PAGE_ACCESS_TOKEN present: {bool(META_PAGE_ACCESS_TOKEN)}")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment.")
 
@@ -72,8 +83,8 @@ def get_session() -> requests.Session:
     """Return a requests.Session with retry logic."""
     session = requests.Session()
     retry = Retry(
-        total=3,
-        backoff_factor=1,
+        total=5,
+        backoff_factor=2,
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["HEAD", "GET", "OPTIONS", "GET"],
     )
