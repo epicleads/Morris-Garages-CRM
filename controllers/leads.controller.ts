@@ -336,9 +336,18 @@ export const updateLeadStatusController = async (
     const user = request.authUser!;
     const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
     const { id } = paramsSchema.parse(request.params);
+    request.log.info(
+      { userId: user.id, role: user.role, params: request.params, body: request.body },
+      'updateLeadStatusController: incoming request',
+    );
     const body = updateStatusSchema.parse(request.body);
+    request.log.info({ id, body }, 'updateLeadStatusController: parsed body');
 
     const updatedLead = await updateLeadStatus(user, id, body);
+    request.log.info(
+      { id, assigned_to: updatedLead.assigned_to, status: updatedLead.status },
+      'updateLeadStatusController: update successful',
+    );
     return reply.send({
       message: 'Lead status updated successfully',
       lead: updatedLead,
