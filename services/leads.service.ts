@@ -440,7 +440,8 @@ export const updateLeadStatus = async (
     input.status !== 'Lost' &&
     updateData.IS_LOST === undefined
   ) {
-    updateData.IS_LOST = false;
+    // Use NULL (not false) to represent "not lost" so filters that check for NULL work correctly
+    updateData.IS_LOST = null;
   }
 
   // Update lead
