@@ -880,6 +880,13 @@ export const getFilterCounts = async (userId: number): Promise<FilterCounts> => 
 
       const { count, error } = await qualifiedQuery;
 
+      console.log('[getFilterCounts] qualified debug', {
+        userId,
+        totalQualRows: qualRows?.length ?? 0,
+        retailedIdsCount: retailedIds.length,
+        qualifiedCount: count ?? 0,
+      });
+
       if (error) {
         throw error;
       }
