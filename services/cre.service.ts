@@ -867,13 +867,18 @@ export const getFilterCounts = async (userId: number): Promise<FilterCounts> => 
         .map((r) => r.lead_id)
         .filter((id): id is number => typeof id === 'number');
 
-      const { count, error } = await supabaseAdmin
+      let qualifiedQuery = supabaseAdmin
         .from('leads_master')
         .select('id', { count: 'exact', head: true })
         .eq('assigned_to', userId)
         .eq('is_qualified', true)
-        .is('IS_LOST', null)
-        .not('id', 'in', `(${retailedIds.join(',') || 'NULL'})`);
+        .is('IS_LOST', null);
+
+      if (retailedIds.length > 0) {
+        qualifiedQuery = qualifiedQuery.not('id', 'in', `(${retailedIds.join(',')})`);
+      }
+
+      const { count, error } = await qualifiedQuery;
 
       if (error) {
         throw error;
