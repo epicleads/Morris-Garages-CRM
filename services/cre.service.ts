@@ -603,8 +603,23 @@ export const getQualifiedLeads = async (
   const limit = options?.limit ?? 50;
   const offset = (page - 1) * limit;
 
+  let query = supabaseAdmin
+    .from('leads_master')
+    .select(
+      `
+      *,
+      source:sources(id, display_name, source_type)
+    `,
+      { count: 'exact' }
+    )
+    .eq('assigned_to', userId)
+    .eq('is_qualified', true)
+    .is('IS_LOST', null)
+    .order('updated_at', { ascending: false });
+
   // Only show qualified leads that are NOT retailed yet.
-  // 1) Find all lead_ids where RETAILED is TRUE
+  // Find all lead_ids where RETAILED is TRUE and exclude them,
+  // but only apply the filter when we actually have some IDs.
   const { data: retailedRows, error: retailedError } = await supabaseAdmin
     .from('leads_qualification')
     .select('lead_id, RETAILED');
@@ -618,21 +633,10 @@ export const getQualifiedLeads = async (
     .map((r) => r.lead_id)
     .filter((id): id is number => typeof id === 'number');
 
-  let query = supabaseAdmin
-    .from('leads_master')
-    .select(
-      `
-      *,
-      source:sources(id, display_name, source_type)
-    `,
-      { count: 'exact' }
-    )
-    .eq('assigned_to', userId)
-    .eq('is_qualified', true)
-    .is('IS_LOST', null)
+  if (retailedIds.length > 0) {
     // Exclude retailed leads (those will appear in "Won")
-    .not('id', 'in', `(${retailedIds.join(',') || 'NULL'})`)
-    .order('updated_at', { ascending: false });
+    query = query.not('id', 'in', `(${retailedIds.join(',')})`);
+  }
 
   query = query.range(offset, offset + limit - 1);
 
