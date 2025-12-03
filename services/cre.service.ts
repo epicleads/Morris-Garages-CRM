@@ -665,11 +665,12 @@ export const getWonLeads = async (
   const limit = options?.limit ?? 50;
   const offset = (page - 1) * limit;
 
-  // First, find qualified leads where RETAILED is true
+  // First, find qualified leads where RETAILED is true and qualified by this user
   const { data: qualRows, error: qualError } = await supabaseAdmin
     .from('leads_qualification')
     .select('lead_id')
-    .eq('RETAILED', true);
+    .eq('RETAILED', true)
+    .eq('qualified_by', userId);
 
   if (qualError) {
     throw new Error(`Failed to fetch won leads (qualification): ${qualError.message}`);
@@ -703,19 +704,12 @@ export const getWonLeads = async (
         BOOKED,
         qualified_at
       )
-    `, { count: 'exact' })
-    .eq('assigned_to', userId)
-    .eq('is_qualified', true)
-    .is('IS_LOST', null)
-    .eq('qualification.RETAILED', true)
-    .eq('qualification.qualified_by', userId)
-      source:sources(id, display_name, source_type)
     `,
       { count: 'exact' }
     )
     .eq('assigned_to', userId)
     .eq('is_qualified', true)
-    .eq('IS_LOST', false)
+    .is('IS_LOST', null)
     .in('id', leadIds)
     .order('updated_at', { ascending: false });
 
