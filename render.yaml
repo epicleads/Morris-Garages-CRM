@@ -3,10 +3,10 @@ services:
     name: mgcrm-backend
     env: node
     buildCommand: npm install && npm run build
-    startCommand: NODE_OPTIONS=--max-old-space-size=512 node dist/server.js
+    startCommand: NODE_OPTIONS="--max-old-space-size=512" node dist/server.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_OPTIONS
-        value: --max-old-space-size=512
+        value: "--max-old-space-size=512"
 

@@ -6,9 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only server.ts",
-    "build": "tsc",
+    "build": "tsc --build",
+    "build:clean": "rm -rf dist && npm run build",
     "start": "node dist/server.js",
     "start:dev": "node server.js",
+    "start:prod": "NODE_OPTIONS=\"--max-old-space-size=512\" node dist/server.js",
     "lint": "eslint . --ext .ts"
   },
   "dependencies": {
