@@ -384,16 +384,20 @@ export const deleteBranchMemberController = async (
     const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
     const { id } = paramsSchema.parse(request.params);
 
+    // Soft delete / deactivate instead of hard delete to preserve history
     const { error } = await supabaseAdmin
       .from('branch_members')
-      .delete()
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id);
 
     if (error) {
-      throw new Error(`Failed to delete branch member: ${error.message}`);
+      throw new Error(`Failed to deactivate branch member: ${error.message}`);
     }
 
-    return reply.send({ message: 'Branch member deleted' });
+    return reply.send({ message: 'Branch member deactivated' });
   } catch (error: any) {
     request.log.error(error);
     if (error instanceof z.ZodError) {
