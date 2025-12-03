@@ -64,23 +64,29 @@ const updateStatusSchema = z.object({
 
 const qualifyLeadSchema = z.object({
   qualified_category: z.string().min(1, 'Qualified category is required'),
-  model_interested: z.string().optional(),
-  variant: z.string().optional(),
-  profession: z.string().optional(),
-  customer_location: z.string().optional(),
-  purchase_timeline: z.string().optional(),
-  finance_type: z.string().optional(),
-  testdrive_date: z.string().optional(), // YYYY-MM-DD format
-  exchange_vehicle_make: z.string().optional(),
-  exchange_vehicle_model: z.string().optional(),
-  exchange_vehicle_year: z.coerce.number().int().positive().max(2100).optional(),
-  lead_category: z.string().optional(),
+  model_interested: z.string().min(1, 'Model is required'),
+  variant: z.string().min(1, 'Variant is required'),
+  profession: z.string().nullish(), // Accepts string, null, or undefined
+  customer_location: z.string().nullish(), // Accepts string, null, or undefined
+  purchase_timeline: z.string().nullish(), // Accepts string, null, or undefined
+  finance_type: z.string().nullish(), // Accepts string, null, or undefined
+  testdrive_date: z.string().nullish(), // Accepts string, null, or undefined (YYYY-MM-DD format)
+  exchange_vehicle_make: z.string().nullish(), // Accepts string, null, or undefined
+  exchange_vehicle_model: z.string().nullish(), // Accepts string, null, or undefined
+  exchange_vehicle_year: z.any().transform((val) => {
+    if (val === null || val === undefined || val === '') return null;
+    const num = Number(val);
+    if (isNaN(num)) return null;
+    if (num <= 0 || num > 2100) return null;
+    return Math.floor(num); // Ensure integer
+  }).nullable().optional(), // Accepts number, null, or undefined
+  lead_category: z.string().min(1, 'Lead category is required'),
   next_followup_at: z.string().datetime('next_followup_at is required and must be a valid ISO datetime (e.g., 2024-01-16T10:00:00Z)'),
-  remarks: z.string().optional(),
-  branch_id: z.coerce.number().int().positive().optional(),
-  tl_id: z.coerce.number().int().positive().optional(),
-  rm_id: z.coerce.number().int().positive().optional(),
-  dms_id: z.string().optional(),
+  remarks: z.string().min(1, 'Remarks is required'),
+  branch_id: z.coerce.number().int().positive().nullish(), // Accepts number, null, or undefined
+  tl_id: z.coerce.number().int().positive().nullish(), // Accepts number, null, or undefined
+  rm_id: z.coerce.number().int().positive().nullish(), // Accepts number, null, or undefined
+  dms_id: z.string().nullish(), // Accepts string, null, or undefined
 });
 
 // Schema for updating qualification (all fields optional - validation done manually)
@@ -128,11 +134,39 @@ export const qualifyLeadController = async (
     const { id } = paramsSchema.parse(request.params);
     const body = qualifyLeadSchema.parse(request.body);
 
-    // Validate required fields
+    // Validate required fields (schema already validates, but provide clear error messages)
     if (!body.qualified_category || body.qualified_category.trim() === '') {
       return reply.status(400).send({
         message: 'Validation failed',
         errors: [{ field: 'qualified_category', message: 'Qualified category is required' }],
+      });
+    }
+
+    if (!body.model_interested || body.model_interested.trim() === '') {
+      return reply.status(400).send({
+        message: 'Validation failed',
+        errors: [{ field: 'model_interested', message: 'Model is required' }],
+      });
+    }
+
+    if (!body.variant || body.variant.trim() === '') {
+      return reply.status(400).send({
+        message: 'Validation failed',
+        errors: [{ field: 'variant', message: 'Variant is required' }],
+      });
+    }
+
+    if (!body.lead_category || body.lead_category.trim() === '') {
+      return reply.status(400).send({
+        message: 'Validation failed',
+        errors: [{ field: 'lead_category', message: 'Lead category is required' }],
+      });
+    }
+
+    if (!body.remarks || body.remarks.trim() === '') {
+      return reply.status(400).send({
+        message: 'Validation failed',
+        errors: [{ field: 'remarks', message: 'Remarks is required' }],
       });
     }
 
@@ -144,24 +178,25 @@ export const qualifyLeadController = async (
     }
 
     // Map snake_case body to camelCase service input
+    // Convert null to undefined for optional fields
     const serviceInput: QualifyLeadInput = {
       qualifiedCategory: body.qualified_category,
       modelInterested: body.model_interested,
       variant: body.variant,
-      profession: body.profession,
-      customerLocation: body.customer_location,
-      purchaseTimeline: body.purchase_timeline,
-      financeType: body.finance_type,
-      testdriveDate: body.testdrive_date,
-      exchangeVehicleMake: body.exchange_vehicle_make,
-      exchangeVehicleModel: body.exchange_vehicle_model,
-      exchangeVehicleYear: body.exchange_vehicle_year,
+      profession: body.profession ?? undefined,
+      customerLocation: body.customer_location ?? undefined,
+      purchaseTimeline: body.purchase_timeline ?? undefined,
+      financeType: body.finance_type ?? undefined,
+      testdriveDate: body.testdrive_date ?? undefined,
+      exchangeVehicleMake: body.exchange_vehicle_make ?? undefined,
+      exchangeVehicleModel: body.exchange_vehicle_model ?? undefined,
+      exchangeVehicleYear: body.exchange_vehicle_year ?? undefined,
       leadCategory: body.lead_category,
       nextFollowupAt: body.next_followup_at,
       remarks: body.remarks,
-      branchId: body.branch_id,
-      tlId: body.tl_id,
-      rmId: body.rm_id,
+      branchId: body.branch_id ?? undefined,
+      tlId: body.tl_id ?? undefined,
+      rmId: body.rm_id ?? undefined,
     };
 
     const qualification = await qualifyLead(user, id, serviceInput);

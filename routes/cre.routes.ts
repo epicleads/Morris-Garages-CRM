@@ -15,6 +15,7 @@ import {
   markPendingController,
   updateQualifiedLeadStatusController,
   getLeadQualificationController,
+  createVerificationCallController,
 } from '../controllers/cre.controller';
 
 const creRoutes = async (fastify: FastifyInstance) => {
@@ -38,6 +39,9 @@ const creRoutes = async (fastify: FastifyInstance) => {
 
     // Get lead qualification details
     instance.get('/cre/leads/:lead_id/qualification', getLeadQualificationController);
+
+    // Create verification call (for qualified leads)
+    instance.post('/cre/leads/verification-call', createVerificationCallController);
 
     // Filter counts (for tab labels)
     instance.get('/cre/leads/filter-counts', getFilterCountsController);

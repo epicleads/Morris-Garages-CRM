@@ -1025,3 +1025,118 @@ export const getLeadQualification = async (
 
   return data;
 };
+
+/**
+ * Verification Call - CRE calls customer after qualification
+ * to verify RM/TL follow-up, capture call outcome and optionally
+ * update TD / Booking / Retail flags.
+ */
+export interface VerificationCallInput {
+  lead_id: number;
+  call_outcome: string;
+  remarks: string;
+  next_followup_at?: string | null;
+  test_drive?: boolean;
+  booked?: boolean;
+  retailed?: boolean;
+}
+
+export const createVerificationCall = async (
+  userId: number,
+  input: VerificationCallInput
+): Promise<void> => {
+  const { lead_id, call_outcome, remarks, next_followup_at, test_drive, booked, retailed } = input;
+
+  // 1. Verify lead exists and is qualified
+  const { data: lead, error: leadError } = await supabaseAdmin
+    .from('leads_master')
+    .select('id, assigned_to, is_qualified, status')
+    .eq('id', lead_id)
+    .single();
+
+  if (leadError || !lead) {
+    throw new Error('Lead not found');
+  }
+
+  if (!lead.is_qualified) {
+    throw new Error('Lead is not qualified');
+  }
+
+  // 2. Verify access (assigned to user or qualified by user)
+  if (lead.assigned_to !== userId) {
+    const { data: qual, error: qualError } = await supabaseAdmin
+      .from('leads_qualification')
+      .select('qualified_by')
+      .eq('lead_id', lead_id)
+      .single();
+
+    if (qualError || !qual || qual.qualified_by !== userId) {
+      throw new Error('Unauthorized to create verification call for this lead');
+    }
+  }
+
+  // 3. Update leads_qualification with status updates if provided
+  const updateData: any = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (test_drive !== undefined) {
+    updateData.TEST_DRIVE = test_drive;
+  }
+  if (booked !== undefined) {
+    updateData.BOOKED = booked;
+  }
+  if (retailed !== undefined) {
+    updateData.RETAILED = retailed;
+  }
+  if (next_followup_at) {
+    updateData.next_followup_at = next_followup_at;
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from('leads_qualification')
+    .update(updateData)
+    .eq('lead_id', lead_id);
+
+  if (updateError) {
+    throw new Error(`Failed to update qualification: ${updateError.message}`);
+  }
+
+  // 4. Update leads_master next_followup_at if provided
+  if (next_followup_at) {
+    const { error: masterUpdateError } = await supabaseAdmin
+      .from('leads_master')
+      .update({
+        next_followup_at: next_followup_at,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', lead_id);
+
+    if (masterUpdateError) {
+      throw new Error(`Failed to update lead: ${masterUpdateError.message}`);
+    }
+  }
+
+  // 5. Create lead log entry for verification call
+  const verificationRemarks =
+    `[Verification Call][Outcome: ${call_outcome}] ` +
+    `${remarks}${test_drive ? ' | Test Drive: Yes' : ''}` +
+    `${booked ? ' | Booked: Yes' : ''}` +
+    `${retailed ? ' | Retailed: Yes' : ''}`;
+
+  await supabaseAdmin.from('leads_logs').insert({
+    lead_id: lead_id,
+    old_status: lead.status,
+    new_status: lead.status, // Status doesn't change, just verification
+    remarks: verificationRemarks,
+    created_by: userId,
+    metadata: {
+      action: 'verification_call',
+      call_outcome,
+      test_drive: !!test_drive,
+      booked: !!booked,
+      retailed: !!retailed,
+      next_followup_at: next_followup_at || null,
+    },
+  });
+};

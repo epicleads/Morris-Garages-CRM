@@ -18,6 +18,8 @@ import {
   MarkPendingInput,
   updateQualifiedLeadStatus,
   getLeadQualification,
+  createVerificationCall,
+  VerificationCallInput,
 } from '../services/cre.service';
 
 export const getCreDashboardSummaryController = async (
@@ -38,8 +40,8 @@ export const getCreDashboardSummaryController = async (
 const updateLeadQualificationSchema = z.object({
   lead_id: z.coerce.number().int().positive(),
   qualified_category: z.string().min(1, 'Qualified category is required'),
-  model_interested: z.string().nullable().optional(),
-  variant: z.string().nullable().optional(),
+  model_interested: z.string().min(1, 'Model is required'),
+  variant: z.string().min(1, 'Variant is required'),
   profession: z.string().nullable().optional(),
   customer_location: z.string().nullable().optional(),
   purchase_timeline: z.string().nullable().optional(),
@@ -48,9 +50,9 @@ const updateLeadQualificationSchema = z.object({
   exchange_vehicle_make: z.string().nullable().optional(),
   exchange_vehicle_model: z.string().nullable().optional(),
   exchange_vehicle_year: z.coerce.number().int().positive().max(2100).nullable().optional(),
-  lead_category: z.string().nullable().optional(),
+  lead_category: z.string().min(1, 'Lead category is required'),
   next_followup_at: z.string().datetime('nextFollowupAt is required and must be a valid ISO datetime'),
-  remarks: z.string().nullable().optional(),
+  remarks: z.string().min(1, 'Remarks is required'),
   qualified_by: z.coerce.number().int().positive(),
 });
 
@@ -497,6 +499,57 @@ export const getLeadQualificationController = async (
     request.log.error(error);
     return reply.status(500).send({
       message: error.message || 'Failed to fetch lead qualification details',
+    });
+  }
+};
+
+// Validation schema for verification call
+const verificationCallSchema = z.object({
+  lead_id: z.coerce.number().int().positive(),
+  // High-level dropdown outcome, e.g. 'RNR', 'Call Disconnected', 'Still Thinking', etc.
+  call_outcome: z.string().min(1, 'Call outcome is required'),
+  remarks: z.string().min(1, 'Remarks is required'),
+  next_followup_at: z.string().datetime().nullable().optional(),
+  test_drive: z.boolean().optional(),
+  booked: z.boolean().optional(),
+  retailed: z.boolean().optional(),
+});
+
+export const createVerificationCallController = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  const user = request.authUser;
+
+  if (!user) {
+    return reply.status(401).send({ message: 'Unauthorized' });
+  }
+
+  try {
+    const body = verificationCallSchema.parse(request.body);
+    
+    const input: VerificationCallInput = {
+      lead_id: body.lead_id,
+      call_outcome: body.call_outcome,
+      remarks: body.remarks,
+      next_followup_at: body.next_followup_at ?? null,
+      test_drive: body.test_drive ?? false,
+      booked: body.booked ?? false,
+      retailed: body.retailed ?? false,
+    };
+
+    await createVerificationCall(user.id, input);
+    return reply.send({ message: 'Verification call recorded successfully' });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({
+        message: 'Validation error',
+        errors: error.errors,
+      });
+    }
+    request.log.error(error);
+    return reply.status(500).send({
+      message: error.message || 'Failed to create verification call',
     });
   }
 };
