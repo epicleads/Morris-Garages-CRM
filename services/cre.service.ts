@@ -163,12 +163,12 @@ export const updateLeadQualification = async (
     qualification = newQual;
   }
 
-  // Update leads_master: set is_qualified = true and update next_followup_at
+  // Update leads_master: set is_qualified = true, mark status as Qualified, and update next_followup_at
   const { error: updateLeadError } = await supabaseAdmin
     .from('leads_master')
     .update({
       is_qualified: true,
-      status: 'Pending', // Set status to 'pending' when qualified
+      status: 'Qualified', // Core status reflects that CRE has qualified the lead
       next_followup_at: input.nextFollowupAt,
       Lead_Remarks: input.remarks || null,
       updated_at: new Date().toISOString(),

@@ -166,7 +166,8 @@ export const getQualifiedLeadsForReview = async (): Promise<AdminQualifiedLead[]
         status,
         source_id,
         assigned_to,
-        created_at
+        created_at,
+        source:sources(id, display_name, source_type)
       `)
       .in('id', leadIds);
 
