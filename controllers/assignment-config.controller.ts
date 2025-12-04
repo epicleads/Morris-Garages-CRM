@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { canViewAllLeads } from '../services/permissions.service';
 import { supabaseAdmin } from '../config/supabase';
+import { autoAssignLead } from '../services/assignment.service';
 
 const ensureManager = (user: any) => {
   if (!canViewAllLeads(user)) {
@@ -214,8 +215,12 @@ export const deleteAutoAssignConfigController = async (
 };
 
 /**
- * Run auto-assign for all active configurations
+ * Run auto-assign for all active assignment rules (per source)
  * POST /admin/auto-assign/run
+ *
+ * This endpoint is a convenience wrapper around the existing assignment_rules
+ * + autoAssignLead logic. It does NOT depend on auto_assign_configs, so it
+ * works with the rules you configure in the Assignment Rules UI.
  */
 export const runAutoAssignController = async (
   request: FastifyRequest,
@@ -225,104 +230,65 @@ export const runAutoAssignController = async (
     const user = request.authUser!;
     ensureManager(user);
 
-    // Get all active auto-assign configs
-    const { data: configs, error: configError } = await supabaseAdmin
-      .from('auto_assign_configs')
-      .select('*')
-      .eq('is_active', true);
+    // 1. Get all active assignment rules that are linked to a source
+    const { data: rules, error: rulesError } = await supabaseAdmin
+      .from('assignment_rules')
+      .select('id, source_id, is_active')
+      .eq('is_active', true)
+      .not('source_id', 'is', null);
 
-    if (configError && configError.code !== 'PGRST116') {
-      request.log.error(configError);
+    if (rulesError) {
+      request.log.error(rulesError);
       return reply.status(500).send({
-        message: `Failed to fetch configurations: ${configError.message}`,
+        message: `Failed to fetch assignment rules: ${rulesError.message}`,
       });
     }
 
-    if (!configs || configs.length === 0) {
+    if (!rules || rules.length === 0) {
       return reply.send({
-        message: 'No active auto-assign configurations found',
+        message: 'No active assignment rules found',
         total_assigned: 0,
       });
     }
 
-    // Group configs by source
-    const sourceGroups: Record<string, any[]> = {};
-    configs.forEach((config: any) => {
-      const sourceKey = config.sub_source
-        ? `${config.source} + ${config.sub_source}`
-        : config.source;
-      if (!sourceGroups[sourceKey]) {
-        sourceGroups[sourceKey] = [];
-      }
-      sourceGroups[sourceKey].push(config);
-    });
+    // 2. Get distinct source IDs from rules
+    const sourceIds = Array.from(
+      new Set(rules.map((r: any) => r.source_id).filter((id: any) => id != null))
+    ) as number[];
 
     let totalAssigned = 0;
 
-    // Process each source group
-    for (const [sourceKey, sourceConfigs] of Object.entries(sourceGroups)) {
-      const [sourceName, subSource] = sourceKey.includes(' + ')
-        ? sourceKey.split(' + ', 2)
-        : [sourceKey, null];
-
-      // Find source
-      const { data: sourceRecord } = await supabaseAdmin
-        .from('sources')
-        .select('id')
-        .eq('display_name', sourceName)
-        .maybeSingle();
-
-      if (!sourceRecord) continue;
-
-      // Get unassigned leads for this source
-      let leadsQuery = supabaseAdmin
+    // 3. For each source, find unassigned "New" leads and run autoAssignLead
+    for (const sourceId of sourceIds) {
+      const { data: leads, error: leadsError } = await supabaseAdmin
         .from('leads_master')
         .select('id')
-        .eq('source_id', sourceRecord.id)
-        .is('assigned_to', null);
+        .eq('source_id', sourceId)
+        .is('assigned_to', null)
+        .eq('status', 'New');
 
-      const { data: unassignedLeads } = await leadsQuery;
+      if (leadsError) {
+        request.log.error(leadsError);
+        continue;
+      }
 
-      if (!unassignedLeads || unassignedLeads.length === 0) continue;
+      if (!leads || leads.length === 0) continue;
 
-      // Calculate total percentage
-      const totalPercentage = sourceConfigs.reduce((sum, c) => sum + c.percentage, 0);
-      if (totalPercentage !== 100) continue; // Skip invalid configs
-
-      // Assign leads based on percentages
-      const totalLeads = unassignedLeads.length;
-      let leadIndex = 0;
-
-      for (const config of sourceConfigs) {
-        const leadCount = Math.floor((config.percentage / 100) * totalLeads);
-        const leadsToAssign = unassignedLeads.slice(leadIndex, leadIndex + leadCount);
-        leadIndex += leadCount;
-
-        if (leadsToAssign.length > 0) {
-          const { error: assignError } = await supabaseAdmin
-            .from('leads_master')
-            .update({
-              assigned_to: config.cre_id,
-              assigned_at: new Date().toISOString(),
-              status: 'Assigned',
-              updated_at: new Date().toISOString(),
-            })
-            .in('id', leadsToAssign.map((l: any) => l.id));
-
-          if (!assignError) {
-            totalAssigned += leadsToAssign.length;
-          }
+      for (const lead of leads) {
+        const result = await autoAssignLead(lead.id, sourceId);
+        if (result?.assignedTo) {
+          totalAssigned += 1;
         }
       }
     }
 
     return reply.send({
-      message: `Auto-assign completed: ${totalAssigned} leads assigned`,
+      message: `Auto-assignment completed. Assigned ${totalAssigned} leads.`,
       total_assigned: totalAssigned,
     });
   } catch (error: any) {
     request.log.error(error);
-    if (error.message.includes('Permission denied')) {
+    if (error.message?.includes('Permission denied')) {
       return reply.status(403).send({ message: error.message });
     }
     return reply.status(500).send({
