@@ -70,7 +70,7 @@ const qualifyLeadSchema = z.object({
   customer_location: z.string().nullish(), // Accepts string, null, or undefined
   purchase_timeline: z.string().nullish(), // Accepts string, null, or undefined
   finance_type: z.string().nullish(), // Accepts string, null, or undefined
-  testdrive_date: z.string().nullish(), // Accepts string, null, or undefined (YYYY-MM-DD format)
+  testdrive_date: z.string().nullish(), // Accepts string, null, or undefined (YYYY-MM-DD or ISO)
   exchange_vehicle_make: z.string().nullish(), // Accepts string, null, or undefined
   exchange_vehicle_model: z.string().nullish(), // Accepts string, null, or undefined
   exchange_vehicle_year: z.any().transform((val) => {
@@ -81,7 +81,8 @@ const qualifyLeadSchema = z.object({
     return Math.floor(num); // Ensure integer
   }).nullable().optional(), // Accepts number, null, or undefined
   lead_category: z.string().min(1, 'Lead category is required'),
-  next_followup_at: z.string().datetime('next_followup_at is required and must be a valid ISO datetime (e.g., 2024-01-16T10:00:00Z)'),
+  // Accept plain string; service layer will validate/parse to a proper Date
+  next_followup_at: z.string().min(1, 'Next follow-up date is required'),
   remarks: z.string().min(1, 'Remarks is required'),
   branch_id: z.coerce.number().int().positive().nullish(), // Accepts number, null, or undefined
   tl_id: z.coerce.number().int().positive().nullish(), // Accepts number, null, or undefined
