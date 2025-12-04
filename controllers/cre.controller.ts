@@ -384,9 +384,13 @@ export const markUnqualifiedController = async (
 };
 
 // Validation schema for mark pending
+// NOTE: We intentionally accept a plain string for next_followup_at (e.g. from
+// HTML datetime-local like '2025-12-04T17:30:00') and let the service layer
+// validate/parse it. Using z.string().datetime() here was too strict and
+// rejected valid user input, causing 400 errors on the CRE dashboard.
 const markPendingSchema = z.object({
   lead_id: z.coerce.number().int().positive(),
-  next_followup_at: z.string().datetime('next_followup_at is required and must be a valid ISO datetime'),
+  next_followup_at: z.string().min(1, 'next_followup_at is required'),
   remarks: z.string().nullable().optional(),
 });
 
