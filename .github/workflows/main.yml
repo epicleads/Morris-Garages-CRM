@@ -90,6 +90,9 @@ jobs:
           KNOWLARITY_SYNC_LOOKBACK_MINUTES: ${{ secrets.KNOWLARITY_SYNC_LOOKBACK_MINUTES }}
           # Optional: Page size (defaults to 100)
           KNOWLARITY_SYNC_PAGE_SIZE: ${{ secrets.KNOWLARITY_SYNC_PAGE_SIZE }}
+          # Optional: Allowed Knowlarity numbers (comma-separated, e.g., "7799935258,7288885544")
+          # If not set, all numbers will be processed (backward compatible)
+          KNOWLARITY_ALLOWED_NUMBERS: ${{ secrets.KNOWLARITY_ALLOWED_NUMBERS }}
         run: |
           echo "Running Knowlarity Call Sync..."
           python knowlarity_sync.py

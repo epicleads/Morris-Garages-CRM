@@ -47,6 +47,20 @@ LOOKBACK_MINUTES = int(_lookback) if _lookback and _lookback.strip() else 15
 _page_size = os.getenv("KNOWLARITY_SYNC_PAGE_SIZE", "100")
 PAGE_SIZE = int(_page_size) if _page_size and _page_size.strip() else 100
 
+# Allowed Knowlarity numbers (comma-separated, e.g., "7799935258,7288885544")
+# If not set or empty, all numbers will be processed (backward compatible)
+_allowed_numbers_str = os.getenv("KNOWLARITY_ALLOWED_NUMBERS", "").strip()
+ALLOWED_KNOWLARITY_NUMBERS: set[str] = set()
+if _allowed_numbers_str:
+    # Split by comma, normalize each number (last 10 digits)
+    for num_str in _allowed_numbers_str.split(","):
+        num_clean = "".join(ch for ch in num_str.strip() if ch.isdigit())
+        if len(num_clean) >= 10:
+            ALLOWED_KNOWLARITY_NUMBERS.add(num_clean[-10:])  # Last 10 digits
+    log(f"Filtering enabled: {len(ALLOWED_KNOWLARITY_NUMBERS)} allowed Knowlarity numbers: {sorted(ALLOWED_KNOWLARITY_NUMBERS)}")
+else:
+    log("No KNOWLARITY_ALLOWED_NUMBERS set - processing all Knowlarity numbers (no filter)")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/ROLE_KEY")
 
@@ -73,6 +87,7 @@ def normalize_phone_keep_10_digits(raw: Optional[str]) -> Optional[str]:
 
 def normalize_knowlarity_record(record: Dict[str, Any]) -> Dict[str, Any]:
     phone = record.get("customer_number") or record.get("caller_id") or None
+    knowlarity_number = record.get("knowlarity_number") or None
     meta_date = record.get("start_time")
     meta_created_at = None
     if meta_date:
@@ -86,6 +101,7 @@ def normalize_knowlarity_record(record: Dict[str, Any]) -> Dict[str, Any]:
         "platform": "Knowlarity",
         "name": f"Knowlarity Lead {phone}" if phone else "Knowlarity Lead",
         "phone_number": phone,
+        "knowlarity_number": knowlarity_number,  # Added for filtering
         "status": record.get("business_call_type") or "call",
         "meta_created_at": meta_created_at,
         "car_model": None,
@@ -294,6 +310,7 @@ def sync_knowlarity_calls(
         "crossSourceHistory": 0,
         "duplicateSameSource": 0,
         "skippedNoPhone": 0,
+        "skippedNotAllowed": 0,  # Records filtered by knowlarity_number
         "errors": [],
         "details": [],
     }
@@ -334,6 +351,40 @@ def sync_knowlarity_calls(
             summary["processedRecords"] += 1
             try:
                 normalized_payload = normalize_knowlarity_record(record)
+                
+                # Filter by knowlarity_number if allowed list is configured
+                if ALLOWED_KNOWLARITY_NUMBERS:
+                    raw_knowlarity_num = normalized_payload.get("knowlarity_number")
+                    normalized_knowlarity_num = normalize_phone_keep_10_digits(raw_knowlarity_num)
+                    
+                    if not normalized_knowlarity_num:
+                        log(
+                            f"Skipping record (no valid knowlarity_number). uuid={record.get('uuid')}"
+                        )
+                        summary["skippedNoPhone"] += 1
+                        summary["details"].append(
+                            {
+                                "uuid": record.get("uuid"),
+                                "reason": "missing_or_invalid_knowlarity_number",
+                                "rawKnowlarityNumber": raw_knowlarity_num,
+                            }
+                        )
+                        continue
+                    
+                    if normalized_knowlarity_num not in ALLOWED_KNOWLARITY_NUMBERS:
+                        log(
+                            f"Skipping record (knowlarity_number not in allowed list). uuid={record.get('uuid')} knowlarity_number={normalized_knowlarity_num}"
+                        )
+                        summary["skippedNotAllowed"] += 1
+                        summary["details"].append(
+                            {
+                                "uuid": record.get("uuid"),
+                                "reason": "knowlarity_number_not_allowed",
+                                "knowlarityNumber": normalized_knowlarity_num,
+                            }
+                        )
+                        continue
+                
                 raw_phone = normalized_payload["phone_number"]
                 normalized_phone = normalize_phone_keep_10_digits(raw_phone)
 
