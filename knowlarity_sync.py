@@ -61,6 +61,21 @@ if _allowed_numbers_str:
 else:
     log("No KNOWLARITY_ALLOWED_NUMBERS set - processing all Knowlarity numbers (no filter)")
 
+# Allowed agent/destination numbers (comma-separated, e.g., "8121119250,8712616309")
+# Filters by agent_number or destination field (whichever is available and not "NA")
+# If not set or empty, no agent/destination filtering (backward compatible)
+_allowed_agent_numbers_str = os.getenv("KNOWLARITY_ALLOWED_AGENT_NUMBERS", "").strip()
+ALLOWED_AGENT_NUMBERS: set[str] = set()
+if _allowed_agent_numbers_str:
+    # Split by comma, normalize each number (last 10 digits)
+    for num_str in _allowed_agent_numbers_str.split(","):
+        num_clean = "".join(ch for ch in num_str.strip() if ch.isdigit())
+        if len(num_clean) >= 10:
+            ALLOWED_AGENT_NUMBERS.add(num_clean[-10:])  # Last 10 digits
+    log(f"Agent filtering enabled: {len(ALLOWED_AGENT_NUMBERS)} allowed agent/destination numbers: {sorted(ALLOWED_AGENT_NUMBERS)}")
+else:
+    log("No KNOWLARITY_ALLOWED_AGENT_NUMBERS set - no agent/destination filtering")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/ROLE_KEY")
 
@@ -88,6 +103,8 @@ def normalize_phone_keep_10_digits(raw: Optional[str]) -> Optional[str]:
 def normalize_knowlarity_record(record: Dict[str, Any]) -> Dict[str, Any]:
     phone = record.get("customer_number") or record.get("caller_id") or None
     knowlarity_number = record.get("knowlarity_number") or None
+    agent_number = record.get("agent_number") or None
+    destination = record.get("destination") or None
     meta_date = record.get("start_time")
     meta_created_at = None
     if meta_date:
@@ -102,6 +119,8 @@ def normalize_knowlarity_record(record: Dict[str, Any]) -> Dict[str, Any]:
         "name": f"Knowlarity Lead {phone}" if phone else "Knowlarity Lead",
         "phone_number": phone,
         "knowlarity_number": knowlarity_number,  # Added for filtering
+        "agent_number": agent_number,  # Added for filtering (may be "NA")
+        "destination": destination,  # Added for filtering (may be empty)
         "status": record.get("business_call_type") or "call",
         "meta_created_at": meta_created_at,
         "car_model": None,
@@ -381,6 +400,51 @@ def sync_knowlarity_calls(
                                 "uuid": record.get("uuid"),
                                 "reason": "knowlarity_number_not_allowed",
                                 "knowlarityNumber": normalized_knowlarity_num,
+                            }
+                        )
+                        continue
+                
+                # Filter by agent_number or destination if allowed list is configured
+                if ALLOWED_AGENT_NUMBERS:
+                    raw_agent_num = normalized_payload.get("agent_number")
+                    raw_destination = normalized_payload.get("destination")
+                    
+                    # Try agent_number first (if not "NA"), then destination
+                    agent_or_dest = None
+                    if raw_agent_num and raw_agent_num.upper() != "NA" and raw_agent_num.strip():
+                        agent_or_dest = raw_agent_num
+                    elif raw_destination and raw_destination.strip():
+                        agent_or_dest = raw_destination
+                    
+                    if agent_or_dest:
+                        normalized_agent_dest = normalize_phone_keep_10_digits(agent_or_dest)
+                        if normalized_agent_dest and normalized_agent_dest not in ALLOWED_AGENT_NUMBERS:
+                            log(
+                                f"Skipping record (agent/destination not in allowed list). uuid={record.get('uuid')} agent={raw_agent_num} destination={raw_destination} normalized={normalized_agent_dest}"
+                            )
+                            summary["skippedNotAllowed"] += 1
+                            summary["details"].append(
+                                {
+                                    "uuid": record.get("uuid"),
+                                    "reason": "agent_destination_not_allowed",
+                                    "agentNumber": raw_agent_num,
+                                    "destination": raw_destination,
+                                    "normalized": normalized_agent_dest,
+                                }
+                            )
+                            continue
+                    else:
+                        # If agent filtering is enabled but no valid agent/destination found, skip
+                        log(
+                            f"Skipping record (no valid agent_number or destination for filtering). uuid={record.get('uuid')} agent={raw_agent_num} destination={raw_destination}"
+                        )
+                        summary["skippedNotAllowed"] += 1
+                        summary["details"].append(
+                            {
+                                "uuid": record.get("uuid"),
+                                "reason": "missing_agent_destination",
+                                "agentNumber": raw_agent_num,
+                                "destination": raw_destination,
                             }
                         )
                         continue
