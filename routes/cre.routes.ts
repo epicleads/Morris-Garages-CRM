@@ -16,6 +16,7 @@ import {
   updateQualifiedLeadStatusController,
   getLeadQualificationController,
   createVerificationCallController,
+  createManualLeadController,
 } from '../controllers/cre.controller';
 
 const creRoutes = async (fastify: FastifyInstance) => {
@@ -42,6 +43,9 @@ const creRoutes = async (fastify: FastifyInstance) => {
 
     // Create verification call (for qualified leads)
     instance.post('/cre/leads/verification-call', createVerificationCallController);
+
+    // Create manual lead (CRE can add leads directly)
+    instance.post('/cre/leads/manual', createManualLeadController);
 
     // Filter counts (for tab labels)
     instance.get('/cre/leads/filter-counts', getFilterCountsController);

@@ -1156,3 +1156,239 @@ export const createVerificationCall = async (
     },
   });
 };
+
+/**
+ * Create manual lead by CRE
+ * Supports immediate qualification/disqualification/pending
+ */
+export interface CreateManualLeadInput {
+  // Customer details (required for all)
+  full_name: string;
+  phone_number: string;
+  
+  // Source selection (required)
+  source_display_name: string; // e.g., "Meta", "Knowlarity", etc.
+  sub_source: string; // source_type (sub-source)
+  
+  // Outcome selection
+  outcome: 'qualified' | 'disqualified' | 'pending';
+  
+  // Qualified details (if outcome = 'qualified')
+  qualification?: {
+    qualified_category: string;
+    model_interested: string;
+    variant: string;
+    profession?: string | null;
+    customer_location?: string | null;
+    purchase_timeline?: string | null;
+    finance_type?: string | null;
+    testdrive_date?: string | null;
+    exchange_vehicle_make?: string | null;
+    exchange_vehicle_model?: string | null;
+    exchange_vehicle_year?: number | null;
+    lead_category: string;
+    remarks: string;
+    next_followup_at: string;
+  };
+  
+  // Disqualified details (if outcome = 'disqualified')
+  disqualified?: {
+    reason: string;
+    remarks: string;
+  };
+  
+  // Pending details (if outcome = 'pending')
+  pending?: {
+    reason: string;
+    next_followup_at: string;
+    remarks: string;
+  };
+}
+
+export const createManualLead = async (
+  userId: number,
+  input: CreateManualLeadInput
+) => {
+  // Normalize phone number
+  const normalizePhone = (phone: string): string => {
+    return phone.replace(/\D/g, '');
+  };
+  
+  const normalizedPhone = normalizePhone(input.phone_number);
+  if (normalizedPhone.length < 10) {
+    throw new Error('Invalid phone number: Must be at least 10 digits');
+  }
+  
+  // Check for duplicate phone
+  const { data: existing, error: dupError } = await supabaseAdmin
+    .from('leads_master')
+    .select('id, full_name, status, source_id')
+    .eq('phone_number_normalized', normalizedPhone)
+    .maybeSingle();
+  
+  if (dupError) {
+    throw new Error(`Failed to check duplicate: ${dupError.message}`);
+  }
+  
+  if (existing) {
+    throw new Error(
+      `Lead with this phone number already exists (ID: ${existing.id}, Name: ${existing.full_name}, Status: ${existing.status})`
+    );
+  }
+  
+  // Lookup source by display_name AND source_type (sub_source)
+  const { data: source, error: sourceError } = await supabaseAdmin
+    .from('sources')
+    .select('id, display_name, source_type')
+    .eq('display_name', input.source_display_name.trim())
+    .eq('source_type', input.sub_source.trim())
+    .maybeSingle();
+  
+  if (sourceError) {
+    throw new Error(`Failed to lookup source: ${sourceError.message}`);
+  }
+  
+  if (!source) {
+    throw new Error(
+      `Source not found: "${input.source_display_name}" with sub-source "${input.sub_source}". Please create this source combination first.`
+    );
+  }
+  
+  const sourceId = source.id;
+  
+  // Determine status and other fields based on outcome
+  let status: string;
+  let isQualified: boolean;
+  let isLost: boolean | null;
+  let nextFollowupAt: string | null = null;
+  let leadRemarks: string | null = null;
+  
+  if (input.outcome === 'qualified') {
+    if (!input.qualification) {
+      throw new Error('Qualification details are required for qualified outcome');
+    }
+    status = 'Qualified';
+    isQualified = true;
+    isLost = null;
+    nextFollowupAt = input.qualification.next_followup_at;
+    leadRemarks = input.qualification.remarks;
+  } else if (input.outcome === 'disqualified') {
+    if (!input.disqualified) {
+      throw new Error('Disqualified details are required for disqualified outcome');
+    }
+    status = 'Unqualified';
+    isQualified = false;
+    isLost = true;
+    leadRemarks = input.disqualified.remarks;
+  } else if (input.outcome === 'pending') {
+    if (!input.pending) {
+      throw new Error('Pending details are required for pending outcome');
+    }
+    status = 'Pending';
+    isQualified = false;
+    isLost = null;
+    nextFollowupAt = input.pending.next_followup_at;
+    leadRemarks = input.pending.remarks;
+  } else {
+    throw new Error(`Invalid outcome: ${input.outcome}`);
+  }
+  
+  // Validate next_followup_at if provided
+  if (nextFollowupAt) {
+    const followupDate = new Date(nextFollowupAt);
+    if (isNaN(followupDate.getTime())) {
+      throw new Error('next_followup_at must be a valid date');
+    }
+  }
+  
+  // Create lead in leads_master
+  const { data: lead, error: leadError } = await supabaseAdmin
+    .from('leads_master')
+    .insert({
+      full_name: input.full_name.trim(),
+      phone_number_normalized: normalizedPhone,
+      source_id: sourceId,
+      assigned_to: userId, // Auto-assign to current CRE
+      assigned_at: new Date().toISOString(),
+      status: status,
+      is_qualified: isQualified,
+      IS_LOST: isLost,
+      next_followup_at: nextFollowupAt,
+      total_attempts: 0,
+      Lead_Remarks: leadRemarks,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  
+  if (leadError) {
+    throw new Error(`Failed to create lead: ${leadError.message}`);
+  }
+  
+  // Create qualification record if qualified
+  let qualification = null;
+  if (input.outcome === 'qualified' && input.qualification) {
+    const { data: qual, error: qualError } = await supabaseAdmin
+      .from('leads_qualification')
+      .insert({
+        lead_id: lead.id,
+        qualified_category: input.qualification.qualified_category,
+        model_interested: input.qualification.model_interested,
+        variant: input.qualification.variant,
+        profession: input.qualification.profession || null,
+        customer_location: input.qualification.customer_location || null,
+        purchase_timeline: input.qualification.purchase_timeline || null,
+        finance_type: input.qualification.finance_type || null,
+        testdrive_date: input.qualification.testdrive_date || null,
+        exchange_vehicle_make: input.qualification.exchange_vehicle_make || null,
+        exchange_vehicle_model: input.qualification.exchange_vehicle_model || null,
+        exchange_vehicle_year: input.qualification.exchange_vehicle_year || null,
+        lead_category: input.qualification.lead_category,
+        next_followup_at: input.qualification.next_followup_at,
+        remarks: input.qualification.remarks,
+        qualified_by: userId,
+        qualified_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    
+    if (qualError) {
+      // Rollback lead creation if qualification fails
+      await supabaseAdmin.from('leads_master').delete().eq('id', lead.id);
+      throw new Error(`Failed to create qualification: ${qualError.message}`);
+    }
+    
+    qualification = qual;
+  }
+  
+  // Create lead log entry
+  let logRemarks: string;
+  if (input.outcome === 'qualified') {
+    logRemarks = `Lead created and qualified manually by CRE. ${input.qualification?.remarks || ''}`;
+  } else if (input.outcome === 'disqualified') {
+    logRemarks = `Lead created and disqualified manually by CRE. Reason: ${input.disqualified?.reason || 'N/A'}. ${input.disqualified?.remarks || ''}`;
+  } else {
+    logRemarks = `Lead created manually by CRE. Pending reason: ${input.pending?.reason || 'N/A'}. ${input.pending?.remarks || ''}`;
+  }
+  
+  await supabaseAdmin.from('leads_logs').insert({
+    lead_id: lead.id,
+    old_status: null,
+    new_status: status,
+    remarks: logRemarks,
+    created_by: userId,
+    metadata: {
+      action: 'cre_manual_create',
+      outcome: input.outcome,
+      source: input.source_display_name,
+      sub_source: input.sub_source,
+    },
+  });
+  
+  return {
+    lead,
+    qualification,
+    message: `Lead created successfully and marked as ${status}`,
+  };
+};

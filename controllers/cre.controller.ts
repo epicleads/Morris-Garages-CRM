@@ -20,6 +20,8 @@ import {
   getLeadQualification,
   createVerificationCall,
   VerificationCallInput,
+  createManualLead,
+  CreateManualLeadInput,
 } from '../services/cre.service';
 
 export const getCreDashboardSummaryController = async (
@@ -554,6 +556,89 @@ export const createVerificationCallController = async (
     request.log.error(error);
     return reply.status(500).send({
       message: error.message || 'Failed to create verification call',
+    });
+  }
+};
+
+/**
+ * Create manual lead by CRE
+ * POST /cre/leads/manual
+ */
+const createManualLeadSchema = z.object({
+  full_name: z.string().min(1, 'Customer name is required'),
+  phone_number: z.string().min(10, 'Phone number is required'),
+  source_display_name: z.string().min(1, 'Source is required'),
+  sub_source: z.string().min(1, 'Sub-source is required'),
+  outcome: z.enum(['qualified', 'disqualified', 'pending']),
+  qualification: z.object({
+    qualified_category: z.string().min(1),
+    model_interested: z.string().min(1),
+    variant: z.string().min(1),
+    profession: z.string().nullish(),
+    customer_location: z.string().nullish(),
+    purchase_timeline: z.string().nullish(),
+    finance_type: z.string().nullish(),
+    testdrive_date: z.string().nullish(),
+    exchange_vehicle_make: z.string().nullish(),
+    exchange_vehicle_model: z.string().nullish(),
+    exchange_vehicle_year: z.coerce.number().int().positive().nullish(),
+    lead_category: z.string().min(1),
+    remarks: z.string().min(1),
+    next_followup_at: z.string().min(1),
+  }).optional(),
+  disqualified: z.object({
+    reason: z.string().min(1),
+    remarks: z.string().min(1),
+  }).optional(),
+  pending: z.object({
+    reason: z.string().min(1),
+    next_followup_at: z.string().min(1),
+    remarks: z.string().min(1),
+  }).optional(),
+}).refine((data) => {
+  // Validate outcome-specific data is provided
+  if (data.outcome === 'qualified' && !data.qualification) {
+    return false;
+  }
+  if (data.outcome === 'disqualified' && !data.disqualified) {
+    return false;
+  }
+  if (data.outcome === 'pending' && !data.pending) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Outcome-specific details are required',
+});
+
+export const createManualLeadController = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const user = request.authUser;
+    if (!user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    const body = createManualLeadSchema.parse(request.body);
+    
+    const result = await createManualLead(user.id, body as CreateManualLeadInput);
+    
+    return reply.status(201).send({
+      success: true,
+      ...result,
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({
+        message: 'Validation error',
+        errors: error.errors,
+      });
+    }
+    request.log.error(error);
+    return reply.status(500).send({
+      message: error.message || 'Failed to create manual lead',
     });
   }
 };
