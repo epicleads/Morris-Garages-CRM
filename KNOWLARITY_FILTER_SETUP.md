@@ -1,7 +1,15 @@
 # Knowlarity Number Filtering Setup Guide
 
 ## Overview
-The Knowlarity sync script now supports filtering by specific `knowlarity_number` values. Only calls received on the allowed numbers will be processed and imported into the CRM.
+The Knowlarity sync script now supports:
+1. **Filtering by numbers:**
+   - **`knowlarity_number`** (SR Number) - The inbound number that received the call
+   - **`agent_number` or `destination`** - The agent/destination number (if available and not "NA")
+2. **Time window control:**
+   - **`FETCH_TODAY_ONLY`** - Fetch all calls from start of today (00:00:00) to now
+   - **`LOOKBACK_MINUTES`** - Fetch last N minutes (default: 15 minutes)
+
+Only calls matching the allowed numbers and within the time window will be processed and imported into the CRM.
 
 ## Changes Made
 
@@ -21,10 +29,14 @@ The Knowlarity sync script now supports filtering by specific `knowlarity_number
 
 ### Step 1: Update Local `.env` File
 
-Add this line to your `.env` file in `Morris-Garages-CRM/`:
+Add these lines to your `.env` file in `Morris-Garages-CRM/`:
 
 ```env
+# Filter by Knowlarity number (SR Number - inbound number)
 KNOWLARITY_ALLOWED_NUMBERS=7799935258,7288885544
+
+# Optional: Filter by agent/destination number (if agent_number is not "NA")
+# KNOWLARITY_ALLOWED_AGENT_NUMBERS=8121119250,8712616309,7386753131
 ```
 
 **Your complete `.env` should now look like:**
@@ -36,29 +48,38 @@ KNOWLARITY_CHANNEL=Basic
 KNOWLARITY_SYNC_ENABLED=true
 KNOWLARITY_SYNC_INTERVAL_MS=60000
 KNOWLARITY_ALLOWED_NUMBERS=7799935258,7288885544
+# KNOWLARITY_ALLOWED_AGENT_NUMBERS=8121119250,8712616309,7386753131
+# Optional: Fetch today's calls only (set to "true" to fetch from start of day to now)
+# If false or not set, uses LOOKBACK_MINUTES (default: last 15 minutes)
+KNOWLARITY_FETCH_TODAY_ONLY=true
 ```
+
+**Note about Agent Number Filtering:**
+- If `agent_number` in the API response is `"NA"` (as in your example), agent filtering won't work
+- The script will try to use `destination` field as a fallback
+- If both are empty/NA, records will be skipped when agent filtering is enabled
+- **Check your Knowlarity API response** to see if `agent_number` or `destination` fields have actual values
 
 ### Step 2: Add to GitHub Actions Secrets
 
-Since your script runs via GitHub Actions, you need to add the secret there:
+Since your script runs via GitHub Actions, you need to add the secrets there:
 
 1. **Go to your GitHub repository**
    - Navigate to: `Settings` → `Secrets and variables` → `Actions`
 
-2. **Click "New repository secret"**
+2. **Click "New repository secret"** and add:
 
-3. **Add the secret:**
+   **Secret 1:**
    - **Name:** `KNOWLARITY_ALLOWED_NUMBERS`
    - **Value:** `7799935258,7288885544`
    - Click "Add secret"
 
-4. **Verify your GitHub Actions workflow file** (usually in `.github/workflows/`)
-   - Make sure it's reading environment variables correctly
-   - Example:
-     ```yaml
-     env:
-       KNOWLARITY_ALLOWED_NUMBERS: ${{ secrets.KNOWLARITY_ALLOWED_NUMBERS }}
-     ```
+   **Secret 2 (Optional - only if you want agent filtering):**
+   - **Name:** `KNOWLARITY_ALLOWED_AGENT_NUMBERS`
+   - **Value:** `8121119250,8712616309,7386753131` (your agent numbers)
+   - Click "Add secret"
+
+3. **The workflow file is already updated** (`.github/workflows/main.yml`) to read these secrets
 
 ### Step 3: Test Locally
 

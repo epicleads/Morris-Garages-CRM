@@ -44,37 +44,50 @@ KNOWLARITY_CHANNEL = "Basic"
 _lookback = os.getenv("KNOWLARITY_SYNC_LOOKBACK_MINUTES", "15")
 LOOKBACK_MINUTES = int(_lookback) if _lookback and _lookback.strip() else 15
 
+# Option to fetch today's calls (from start of day to now) instead of just last N minutes
+# Set to "true" to fetch all calls from today (00:00:00 to now)
+# Default is "true" to fetch all of today's calls
+FETCH_TODAY_ONLY = os.getenv("KNOWLARITY_FETCH_TODAY_ONLY", "true").lower() == "true"
+
 _page_size = os.getenv("KNOWLARITY_SYNC_PAGE_SIZE", "100")
 PAGE_SIZE = int(_page_size) if _page_size and _page_size.strip() else 100
 
+# ============================================================================
+# FILTERING FUNCTIONALITY - COMMENTED OUT FOR NOW (can be enabled later)
+# ============================================================================
 # Allowed Knowlarity numbers (comma-separated, e.g., "7799935258,7288885544")
 # If not set or empty, all numbers will be processed (backward compatible)
-_allowed_numbers_str = os.getenv("KNOWLARITY_ALLOWED_NUMBERS", "").strip()
-ALLOWED_KNOWLARITY_NUMBERS: set[str] = set()
-if _allowed_numbers_str:
-    # Split by comma, normalize each number (last 10 digits)
-    for num_str in _allowed_numbers_str.split(","):
-        num_clean = "".join(ch for ch in num_str.strip() if ch.isdigit())
-        if len(num_clean) >= 10:
-            ALLOWED_KNOWLARITY_NUMBERS.add(num_clean[-10:])  # Last 10 digits
-    log(f"Filtering enabled: {len(ALLOWED_KNOWLARITY_NUMBERS)} allowed Knowlarity numbers: {sorted(ALLOWED_KNOWLARITY_NUMBERS)}")
-else:
-    log("No KNOWLARITY_ALLOWED_NUMBERS set - processing all Knowlarity numbers (no filter)")
+# _allowed_numbers_str = os.getenv("KNOWLARITY_ALLOWED_NUMBERS", "").strip()
+# ALLOWED_KNOWLARITY_NUMBERS: set[str] = set()
+# if _allowed_numbers_str:
+#     # Split by comma, normalize each number (last 10 digits)
+#     for num_str in _allowed_numbers_str.split(","):
+#         num_clean = "".join(ch for ch in num_str.strip() if ch.isdigit())
+#         if len(num_clean) >= 10:
+#             ALLOWED_KNOWLARITY_NUMBERS.add(num_clean[-10:])  # Last 10 digits
+#     log(f"Filtering enabled: {len(ALLOWED_KNOWLARITY_NUMBERS)} allowed Knowlarity numbers: {sorted(ALLOWED_KNOWLARITY_NUMBERS)}")
+# else:
+#     log("No KNOWLARITY_ALLOWED_NUMBERS set - processing all Knowlarity numbers (no filter)")
 
 # Allowed agent/destination numbers (comma-separated, e.g., "8121119250,8712616309")
 # Filters by agent_number or destination field (whichever is available and not "NA")
 # If not set or empty, no agent/destination filtering (backward compatible)
-_allowed_agent_numbers_str = os.getenv("KNOWLARITY_ALLOWED_AGENT_NUMBERS", "").strip()
+# _allowed_agent_numbers_str = os.getenv("KNOWLARITY_ALLOWED_AGENT_NUMBERS", "").strip()
+# ALLOWED_AGENT_NUMBERS: set[str] = set()
+# if _allowed_agent_numbers_str:
+#     # Split by comma, normalize each number (last 10 digits)
+#     for num_str in _allowed_agent_numbers_str.split(","):
+#         num_clean = "".join(ch for ch in num_str.strip() if ch.isdigit())
+#         if len(num_clean) >= 10:
+#             ALLOWED_AGENT_NUMBERS.add(num_clean[-10:])  # Last 10 digits
+#     log(f"Agent filtering enabled: {len(ALLOWED_AGENT_NUMBERS)} allowed agent/destination numbers: {sorted(ALLOWED_AGENT_NUMBERS)}")
+# else:
+#     log("No KNOWLARITY_ALLOWED_AGENT_NUMBERS set - no agent/destination filtering")
+
+# Disabled filtering - process all numbers
+ALLOWED_KNOWLARITY_NUMBERS: set[str] = set()
 ALLOWED_AGENT_NUMBERS: set[str] = set()
-if _allowed_agent_numbers_str:
-    # Split by comma, normalize each number (last 10 digits)
-    for num_str in _allowed_agent_numbers_str.split(","):
-        num_clean = "".join(ch for ch in num_str.strip() if ch.isdigit())
-        if len(num_clean) >= 10:
-            ALLOWED_AGENT_NUMBERS.add(num_clean[-10:])  # Last 10 digits
-    log(f"Agent filtering enabled: {len(ALLOWED_AGENT_NUMBERS)} allowed agent/destination numbers: {sorted(ALLOWED_AGENT_NUMBERS)}")
-else:
-    log("No KNOWLARITY_ALLOWED_AGENT_NUMBERS set - no agent/destination filtering")
+log("Number filtering disabled - processing all Knowlarity calls")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/ROLE_KEY")
@@ -87,7 +100,24 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def format_knowlarity_date(date: dt.datetime) -> str:
-    """YYYY-MM-DD HH:mm:ss as required by Knowlarity API."""
+    """YYYY-MM-DD HH:mm:ss as required by Knowlarity API (in IST timezone)."""
+    # Convert to IST if timezone-aware, otherwise assume it's already IST
+    if date.tzinfo is not None:
+        try:
+            from zoneinfo import ZoneInfo
+            ist_tz = ZoneInfo("Asia/Kolkata")
+            date = date.astimezone(ist_tz)
+        except ImportError:
+            # Fallback for Python < 3.9
+            from datetime import timezone, timedelta
+            ist_tz = timezone(timedelta(hours=5, minutes=30))
+            date = date.astimezone(ist_tz)
+        except:
+            # If conversion fails, use as-is
+            pass
+    # Remove timezone info for formatting (Knowlarity API expects naive datetime string)
+    if date.tzinfo is not None:
+        date = date.replace(tzinfo=None)
     return date.strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -302,14 +332,43 @@ def sync_knowlarity_calls(
 
     log("Starting Knowlarity sync")
 
-    now = dt.datetime.fromisoformat(end_time) if end_time else dt.datetime.utcnow()
+    # Use IST timezone for "today" calculation (Knowlarity API uses IST +05:30)
+    try:
+        from zoneinfo import ZoneInfo
+        ist_tz = ZoneInfo("Asia/Kolkata")
+    except ImportError:
+        # Fallback for Python < 3.9
+        from datetime import timezone, timedelta
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+    
+    # Get current time in IST
+    if end_time:
+        now = dt.datetime.fromisoformat(end_time)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=ist_tz)
+        else:
+            now = now.astimezone(ist_tz)
+    else:
+        now = dt.datetime.now(ist_tz)
+    
     if start_time:
         start_dt = dt.datetime.fromisoformat(start_time)
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=ist_tz)
+        else:
+            start_dt = start_dt.astimezone(ist_tz)
     else:
-        start_dt = now - dt.timedelta(minutes=LOOKBACK_MINUTES)
+        if FETCH_TODAY_ONLY:
+            # Fetch from start of today in IST (00:00:00 IST) to now
+            start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            log(f"FETCH_TODAY_ONLY enabled - fetching all calls from start of today (IST: {start_dt.strftime('%Y-%m-%d %H:%M:%S')})")
+        else:
+            # Default: fetch last N minutes
+            start_dt = now - dt.timedelta(minutes=LOOKBACK_MINUTES)
+            log(f"Using LOOKBACK_MINUTES={LOOKBACK_MINUTES} - fetching last {LOOKBACK_MINUTES} minutes")
 
     log(
-        f"Effective time window start={start_dt.isoformat()} end={now.isoformat()}"
+        f"Effective time window start={start_dt.strftime('%Y-%m-%d %H:%M:%S')} end={now.strftime('%Y-%m-%d %H:%M:%S')} IST (duration: {(now - start_dt).total_seconds() / 3600:.2f} hours)"
     )
 
     per_page = limit if limit and limit > 0 else PAGE_SIZE
@@ -336,6 +395,9 @@ def sync_knowlarity_calls(
 
     inc_total = 0
     inc_today = 0
+
+    # Track phones processed in this batch to avoid duplicate DB queries
+    processed_phones_in_batch: set[str] = set()
 
     has_more = True
 
@@ -366,88 +428,95 @@ def sync_knowlarity_calls(
             has_more = False
             break
 
+        # Clear batch tracking for new page
+        processed_phones_in_batch.clear()
+
         for record in records:
             summary["processedRecords"] += 1
             try:
                 normalized_payload = normalize_knowlarity_record(record)
                 
-                # Filter by knowlarity_number if allowed list is configured
-                if ALLOWED_KNOWLARITY_NUMBERS:
-                    raw_knowlarity_num = normalized_payload.get("knowlarity_number")
-                    normalized_knowlarity_num = normalize_phone_keep_10_digits(raw_knowlarity_num)
-                    
-                    if not normalized_knowlarity_num:
-                        log(
-                            f"Skipping record (no valid knowlarity_number). uuid={record.get('uuid')}"
-                        )
-                        summary["skippedNoPhone"] += 1
-                        summary["details"].append(
-                            {
-                                "uuid": record.get("uuid"),
-                                "reason": "missing_or_invalid_knowlarity_number",
-                                "rawKnowlarityNumber": raw_knowlarity_num,
-                            }
-                        )
-                        continue
-                    
-                    if normalized_knowlarity_num not in ALLOWED_KNOWLARITY_NUMBERS:
-                        log(
-                            f"Skipping record (knowlarity_number not in allowed list). uuid={record.get('uuid')} knowlarity_number={normalized_knowlarity_num}"
-                        )
-                        summary["skippedNotAllowed"] += 1
-                        summary["details"].append(
-                            {
-                                "uuid": record.get("uuid"),
-                                "reason": "knowlarity_number_not_allowed",
-                                "knowlarityNumber": normalized_knowlarity_num,
-                            }
-                        )
-                        continue
-                
-                # Filter by agent_number or destination if allowed list is configured
-                if ALLOWED_AGENT_NUMBERS:
-                    raw_agent_num = normalized_payload.get("agent_number")
-                    raw_destination = normalized_payload.get("destination")
-                    
-                    # Try agent_number first (if not "NA"), then destination
-                    agent_or_dest = None
-                    if raw_agent_num and raw_agent_num.upper() != "NA" and raw_agent_num.strip():
-                        agent_or_dest = raw_agent_num
-                    elif raw_destination and raw_destination.strip():
-                        agent_or_dest = raw_destination
-                    
-                    if agent_or_dest:
-                        normalized_agent_dest = normalize_phone_keep_10_digits(agent_or_dest)
-                        if normalized_agent_dest and normalized_agent_dest not in ALLOWED_AGENT_NUMBERS:
-                            log(
-                                f"Skipping record (agent/destination not in allowed list). uuid={record.get('uuid')} agent={raw_agent_num} destination={raw_destination} normalized={normalized_agent_dest}"
-                            )
-                            summary["skippedNotAllowed"] += 1
-                            summary["details"].append(
-                                {
-                                    "uuid": record.get("uuid"),
-                                    "reason": "agent_destination_not_allowed",
-                                    "agentNumber": raw_agent_num,
-                                    "destination": raw_destination,
-                                    "normalized": normalized_agent_dest,
-                                }
-                            )
-                            continue
-                    else:
-                        # If agent filtering is enabled but no valid agent/destination found, skip
-                        log(
-                            f"Skipping record (no valid agent_number or destination for filtering). uuid={record.get('uuid')} agent={raw_agent_num} destination={raw_destination}"
-                        )
-                        summary["skippedNotAllowed"] += 1
-                        summary["details"].append(
-                            {
-                                "uuid": record.get("uuid"),
-                                "reason": "missing_agent_destination",
-                                "agentNumber": raw_agent_num,
-                                "destination": raw_destination,
-                            }
-                        )
-                        continue
+                # ============================================================================
+                # FILTERING LOGIC - COMMENTED OUT (can be enabled later if needed)
+                # ============================================================================
+                # # Filter by knowlarity_number if allowed list is configured
+                # if ALLOWED_KNOWLARITY_NUMBERS:
+                #     raw_knowlarity_num = normalized_payload.get("knowlarity_number")
+                #     normalized_knowlarity_num = normalize_phone_keep_10_digits(raw_knowlarity_num)
+                #     
+                #     if not normalized_knowlarity_num:
+                #         log(
+                #             f"Skipping record (no valid knowlarity_number). uuid={record.get('uuid')}"
+                #         )
+                #         summary["skippedNoPhone"] += 1
+                #         summary["details"].append(
+                #             {
+                #                 "uuid": record.get("uuid"),
+                #                 "reason": "missing_or_invalid_knowlarity_number",
+                #                 "rawKnowlarityNumber": raw_knowlarity_num,
+                #             }
+                #         )
+                #         continue
+                #     
+                #     if normalized_knowlarity_num not in ALLOWED_KNOWLARITY_NUMBERS:
+                #         log(
+                #             f"Skipping record (knowlarity_number not in allowed list). uuid={record.get('uuid')} knowlarity_number={normalized_knowlarity_num}"
+                #         )
+                #         summary["skippedNotAllowed"] += 1
+                #         summary["details"].append(
+                #             {
+                #                 "uuid": record.get("uuid"),
+                #                 "reason": "knowlarity_number_not_allowed",
+                #                 "knowlarityNumber": normalized_knowlarity_num,
+                #             }
+                #         )
+                #         continue
+                # 
+                # # Filter by agent_number or destination if allowed list is configured
+                # if ALLOWED_AGENT_NUMBERS:
+                #     raw_agent_num = normalized_payload.get("agent_number")
+                #     raw_destination = normalized_payload.get("destination")
+                #     
+                #     # Try agent_number first (if not "NA"), then destination
+                #     agent_or_dest = None
+                #     if raw_agent_num and raw_agent_num.upper() != "NA" and raw_agent_num.strip():
+                #         agent_or_dest = raw_agent_num
+                #     elif raw_destination and raw_destination.strip():
+                #         agent_or_dest = raw_destination
+                #     
+                #     if agent_or_dest:
+                #         normalized_agent_dest = normalize_phone_keep_10_digits(agent_or_dest)
+                #         if normalized_agent_dest and normalized_agent_dest not in ALLOWED_AGENT_NUMBERS:
+                #             log(
+                #                 f"Skipping record (agent/destination not in allowed list). uuid={record.get('uuid')} agent={raw_agent_num} destination={raw_destination} normalized={normalized_agent_dest}"
+                #             )
+                #             summary["skippedNotAllowed"] += 1
+                #             summary["details"].append(
+                #                 {
+                #                     "uuid": record.get("uuid"),
+                #                     "reason": "agent_destination_not_allowed",
+                #                     "agentNumber": raw_agent_num,
+                #                     "destination": raw_destination,
+                #                     "normalized": normalized_agent_dest,
+                #                 }
+                #             )
+                #             continue
+                #     else:
+                #         # If agent filtering is enabled but no valid agent/destination found, skip
+                #         log(
+                #             f"Skipping record (no valid agent_number or destination for filtering). uuid={record.get('uuid')} agent={raw_agent_num} destination={raw_destination}"
+                #         )
+                #         summary["skippedNotAllowed"] += 1
+                #         summary["details"].append(
+                #             {
+                #                 "uuid": record.get("uuid"),
+                #                 "reason": "missing_agent_destination",
+                #                 "agentNumber": raw_agent_num,
+                #                 "destination": raw_destination,
+                #             }
+                #         )
+                #         continue
+                # ============================================================================
                 
                 raw_phone = normalized_payload["phone_number"]
                 normalized_phone = normalize_phone_keep_10_digits(raw_phone)
@@ -466,6 +535,14 @@ def sync_knowlarity_calls(
                     )
                     continue
 
+                # Quick check: if we already processed this phone in this batch, skip immediately
+                if normalized_phone in processed_phones_in_batch:
+                    log(
+                        f"Same-phone duplicate in batch for phone={normalized_phone}; skipping."
+                    )
+                    summary["duplicateSameSource"] += 1
+                    continue
+
                 name = normalized_payload["name"] or f"Knowlarity Lead {normalized_phone}"
 
                 # determine if this record is from 'today' (optional)
@@ -480,7 +557,7 @@ def sync_knowlarity_calls(
                         created_iso = None
                 is_today = 1 if created_iso == today_iso else 0
 
-                # duplicate check
+                # duplicate check in database
                 existing_resp = (
                     supabase.table("leads_master")
                     .select("id, source_id, created_at")
@@ -545,6 +622,8 @@ def sync_knowlarity_calls(
                     summary["insertedNew"] += 1
                     inc_total += 1
                     inc_today += is_today
+                    # Mark this phone as processed in this batch
+                    processed_phones_in_batch.add(normalized_phone)
 
                 else:
                     # Some leads already exist
@@ -579,7 +658,7 @@ def sync_knowlarity_calls(
                             if record.get("uuid")
                             else None,
                             "raw_payload": record,
-                            "received_at": datetime.now(UTC).isoformat() + "Z",
+                            "received_at": datetime.now(UTC).isoformat(),  # Fixed: removed extra "Z" (isoformat already includes timezone)
                             "is_primary": False,
                         }
 
@@ -610,6 +689,8 @@ def sync_knowlarity_calls(
                             f"Same-source duplicate (Knowlarity) for phone={normalized_phone}; skipping."
                         )
                         summary["duplicateSameSource"] += 1
+                        # Mark this phone as processed in this batch
+                        processed_phones_in_batch.add(normalized_phone)
 
             except Exception as rec_err:
                 log(

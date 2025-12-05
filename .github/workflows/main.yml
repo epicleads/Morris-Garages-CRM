@@ -87,12 +87,20 @@ jobs:
           # Optional: Channel (defaults to "Basic")
           KNOWLARITY_CHANNEL: ${{ secrets.KNOWLARITY_CHANNEL }}
           # Optional: Lookback minutes (defaults to 15)
+          # If FETCH_TODAY_ONLY is true, this is ignored and all of today's calls are fetched
           KNOWLARITY_SYNC_LOOKBACK_MINUTES: ${{ secrets.KNOWLARITY_SYNC_LOOKBACK_MINUTES }}
+          # Optional: Fetch today's calls only (set to "true" to fetch from 00:00:00 to now)
+          # If false or not set, uses LOOKBACK_MINUTES (default: last 15 minutes)
+          KNOWLARITY_FETCH_TODAY_ONLY: ${{ secrets.KNOWLARITY_FETCH_TODAY_ONLY }}
           # Optional: Page size (defaults to 100)
           KNOWLARITY_SYNC_PAGE_SIZE: ${{ secrets.KNOWLARITY_SYNC_PAGE_SIZE }}
           # Optional: Allowed Knowlarity numbers (comma-separated, e.g., "7799935258,7288885544")
           # If not set, all numbers will be processed (backward compatible)
           KNOWLARITY_ALLOWED_NUMBERS: ${{ secrets.KNOWLARITY_ALLOWED_NUMBERS }}
+          # Optional: Allowed agent/destination numbers (comma-separated, e.g., "8121119250,8712616309")
+          # Filters by agent_number or destination field (if agent_number is not "NA")
+          # If not set, no agent/destination filtering (backward compatible)
+          KNOWLARITY_ALLOWED_AGENT_NUMBERS: ${{ secrets.KNOWLARITY_ALLOWED_AGENT_NUMBERS }}
         run: |
           echo "Running Knowlarity Call Sync..."
           python knowlarity_sync.py
