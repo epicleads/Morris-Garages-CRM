@@ -24,12 +24,9 @@ export const getSourcesController = async (
   try {
     const user = request.authUser!;
 
-    // Only managers (TL / Admin / Developer) can view sources
-    if (!canViewAllLeads(user)) {
-      return reply.status(403).send({
-        message: 'Permission denied: Only Team Leads and Admins can view sources',
-      });
-    }
+    // Allow all authenticated users (including CREs) to view sources
+    // CREs need this to create manual leads
+    // Create/Update operations are still restricted to TL/Admin
 
     const { data, error } = await supabaseAdmin
       .from('sources')
@@ -45,9 +42,6 @@ export const getSourcesController = async (
     });
   } catch (error: any) {
     request.log.error(error);
-    if (error.message?.includes('Permission denied')) {
-      return reply.status(403).send({ message: error.message });
-    }
     return reply.status(500).send({
       message: error.message || 'Failed to fetch sources',
     });
