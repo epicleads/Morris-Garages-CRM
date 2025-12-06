@@ -10,7 +10,6 @@ import {
   getConversionFunnel,
   DateRange,
 } from '../services/analytics.service';
-import { authorize } from '../middleware/authorize';
 
 // Date range schema
 const dateRangeSchema = z.object({

@@ -540,7 +540,7 @@ export async function getTopPerformingCres(limit: number = 10, dateRange: DateRa
   const sorted = crePerformance
     .filter(cre => cre.retailed > 0 || cre.qualified > 0) // Only show CREs with activity
     .sort((a, b) => {
-      if (b.retails !== a.retails) return b.retails - a.retails;
+      if (b.retailed !== a.retailed) return b.retailed - a.retailed;
       if (b.overall_conversion !== a.overall_conversion) return b.overall_conversion - a.overall_conversion;
       return b.qualified - a.qualified;
     })

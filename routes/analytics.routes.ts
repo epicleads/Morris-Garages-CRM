@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { authorize } from '../middleware/authorize';
+import { authorize } from '../middleware/authGuard';
 import {
   getDashboardMetricsController,
   getSourceDistributionController,
@@ -13,7 +13,7 @@ import {
 const analyticsRoutes = async (fastify: FastifyInstance) => {
   // All analytics routes require authentication
   fastify.register(async (instance) => {
-    instance.addHook('onRequest', authorize);
+    instance.addHook('preHandler', authorize(['Admin', 'CRE_TL']));
 
     // Dashboard metrics
     instance.get('/analytics/dashboard', getDashboardMetricsController);
