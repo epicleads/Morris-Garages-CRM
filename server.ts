@@ -11,6 +11,7 @@ import branchesRoutes from './routes/branches.routes';
 import creRoutes from './routes/cre.routes';
 import usersRoutes from './routes/users.routes';
 import { adminRoutes } from './routes/admin.routes';
+import analyticsRoutes from './routes/analytics.routes';
 import { env } from './config/env';
 import { ensureDeveloper } from './services/auth.service';
 
@@ -35,6 +36,7 @@ const buildServer = () => {
   fastify.register(usersRoutes);
   fastify.register(adminRoutes);
   fastify.register(branchesRoutes);
+  fastify.register(analyticsRoutes);
 
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);
