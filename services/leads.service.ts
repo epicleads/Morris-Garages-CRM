@@ -359,13 +359,32 @@ export const updateLeadStatus = async (
   // Get current lead
   const lead = await getLeadById(user, leadId);
 
-  const attemptNo = input.attemptNo || lead.total_attempts + 1;
+  // Determine the new status (use input status if provided, otherwise preserve current)
+  const newStatus = input.status || lead.status;
+  const statusChanged = newStatus !== lead.status;
+
+  // Check if this is an assignment-only operation (status unchanged, only assignedTo changed)
+  const isAssignmentOnly = 
+    input.assignedTo && 
+    canViewAllLeads(user) &&
+    input.assignedTo !== lead.assigned_to &&
+    !statusChanged;
+
+  // Only increment attempts if this is NOT an assignment-only operation
+  // Assignment-only operations should NOT count as call attempts
+  const attemptNo = isAssignmentOnly 
+    ? null // Assignment-only operations don't count as attempts
+    : (input.attemptNo || (statusChanged ? lead.total_attempts + 1 : lead.total_attempts));
 
   const updateData: any = {
-    status: input.status,
+    status: newStatus,
     updated_at: new Date().toISOString(),
-    total_attempts: attemptNo,
   };
+
+  // Only update total_attempts if this is NOT an assignment-only operation AND status changed
+  if (!isAssignmentOnly && attemptNo !== null && statusChanged) {
+    updateData.total_attempts = attemptNo;
+  }
 
   if (input.remarks) {
     updateData.Lead_Remarks = input.remarks;
@@ -479,9 +498,9 @@ export const updateLeadStatus = async (
   await supabaseAdmin.from('leads_logs').insert({
     lead_id: leadId,
     old_status: lead.status,
-    new_status: input.status,
-    remarks: input.remarks || null,
-    attempt_no: attemptNo,
+    new_status: newStatus,
+    remarks: input.remarks || (isAssignmentOnly ? 'Assigned from All Leads admin view' : null),
+    attempt_no: attemptNo, // Will be NULL for assignment-only operations (not a call attempt)
     created_by: user.id,
     metadata: logMetadata,
   });
