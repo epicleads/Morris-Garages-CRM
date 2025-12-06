@@ -1219,10 +1219,17 @@ export const createManualLead = async (
     throw new Error('Invalid phone number: Must be at least 10 digits');
   }
   
-  // Check for duplicate phone
+  // Check for duplicate phone - get existing lead with assigned CRE info
   const { data: existing, error: dupError } = await supabaseAdmin
     .from('leads_master')
-    .select('id, full_name, status, source_id')
+    .select(`
+      id, 
+      full_name, 
+      status, 
+      source_id,
+      assigned_to,
+      assigned_user:users!leads_master_assigned_to_fkey(user_id, full_name, username)
+    `)
     .eq('phone_number_normalized', normalizedPhone)
     .maybeSingle();
   
@@ -1230,10 +1237,184 @@ export const createManualLead = async (
     throw new Error(`Failed to check duplicate: ${dupError.message}`);
   }
   
+  // If duplicate exists, handle based on outcome
   if (existing) {
-    throw new Error(
-      `Lead with this phone number already exists (ID: ${existing.id}, Name: ${existing.full_name}, Status: ${existing.status})`
-    );
+    // Handle assigned_user which might be an object, array, or null
+    const assignedUser = existing.assigned_user 
+      ? (Array.isArray(existing.assigned_user) 
+          ? existing.assigned_user[0] 
+          : existing.assigned_user)
+      : null;
+    const existingCreName = assignedUser?.full_name || assignedUser?.username || (existing.assigned_to ? 'Another CRE' : 'Unassigned');
+    
+    // If CRE B is trying to create as "Disqualified" or "Pending" → Block with error
+    if (input.outcome === 'disqualified' || input.outcome === 'pending') {
+      throw new Error(
+        `This lead is already assigned to ${existingCreName}. You cannot create a duplicate lead.`
+      );
+    }
+    
+    // If CRE B is trying to create as "Qualified" → Transfer and qualify the existing lead
+    if (input.outcome === 'qualified') {
+      if (!input.qualification) {
+        throw new Error('Qualification details are required for qualified outcome');
+      }
+      
+      // Get the existing lead ID
+      const existingLeadId = existing.id;
+      const previousAssignedTo = existing.assigned_to;
+      
+      // Update the existing lead: transfer to CRE B and qualify it
+      const { error: updateError } = await supabaseAdmin
+        .from('leads_master')
+        .update({
+          assigned_to: userId, // Transfer to CRE B
+          assigned_at: new Date().toISOString(),
+          status: 'Qualified',
+          is_qualified: true,
+          IS_LOST: null,
+          next_followup_at: input.qualification.next_followup_at,
+          Lead_Remarks: input.qualification.remarks,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingLeadId);
+      
+      if (updateError) {
+        throw new Error(`Failed to transfer lead: ${updateError.message}`);
+      }
+      
+      // Check if qualification already exists, update or create
+      const { data: existingQual } = await supabaseAdmin
+        .from('leads_qualification')
+        .select('id')
+        .eq('lead_id', existingLeadId)
+        .maybeSingle();
+      
+      if (existingQual) {
+        // Update existing qualification
+        const { data: qualification, error: qualError } = await supabaseAdmin
+          .from('leads_qualification')
+          .update({
+            qualified_category: input.qualification.qualified_category,
+            model_interested: input.qualification.model_interested,
+            variant: input.qualification.variant,
+            profession: input.qualification.profession || null,
+            customer_location: input.qualification.customer_location || null,
+            purchase_timeline: input.qualification.purchase_timeline || null,
+            finance_type: input.qualification.finance_type || null,
+            testdrive_date: input.qualification.testdrive_date || null,
+            exchange_vehicle_make: input.qualification.exchange_vehicle_make || null,
+            exchange_vehicle_model: input.qualification.exchange_vehicle_model || null,
+            exchange_vehicle_year: input.qualification.exchange_vehicle_year || null,
+            lead_category: input.qualification.lead_category,
+            next_followup_at: input.qualification.next_followup_at,
+            remarks: input.qualification.remarks,
+            qualified_by: userId,
+            qualified_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingQual.id)
+          .select()
+          .single();
+        
+        if (qualError) {
+          throw new Error(`Failed to update qualification: ${qualError.message}`);
+        }
+        
+        // Create transfer log
+        await supabaseAdmin.from('leads_logs').insert({
+          lead_id: existingLeadId,
+          old_status: existing.status,
+          new_status: 'Qualified',
+          remarks: `Lead transferred from ${existingCreName} and qualified by CRE. ${input.qualification.remarks || ''}`,
+          created_by: userId,
+          metadata: {
+            action: 'lead_transfer_and_qualify',
+            previous_assigned_to: previousAssignedTo,
+            new_assigned_to: userId,
+            previous_cre: existingCreName,
+            outcome: 'qualified',
+            source: input.source_display_name,
+            sub_source: input.sub_source,
+          },
+        });
+        
+        // Fetch updated lead
+        const { data: updatedLead } = await supabaseAdmin
+          .from('leads_master')
+          .select('*')
+          .eq('id', existingLeadId)
+          .single();
+        
+        return {
+          lead: updatedLead,
+          qualification,
+          message: `Lead transferred from ${existingCreName} and qualified successfully`,
+          transferred: true,
+        };
+      } else {
+        // Create new qualification
+        const { data: qualification, error: qualError } = await supabaseAdmin
+          .from('leads_qualification')
+          .insert({
+            lead_id: existingLeadId,
+            qualified_category: input.qualification.qualified_category,
+            model_interested: input.qualification.model_interested,
+            variant: input.qualification.variant,
+            profession: input.qualification.profession || null,
+            customer_location: input.qualification.customer_location || null,
+            purchase_timeline: input.qualification.purchase_timeline || null,
+            finance_type: input.qualification.finance_type || null,
+            testdrive_date: input.qualification.testdrive_date || null,
+            exchange_vehicle_make: input.qualification.exchange_vehicle_make || null,
+            exchange_vehicle_model: input.qualification.exchange_vehicle_model || null,
+            exchange_vehicle_year: input.qualification.exchange_vehicle_year || null,
+            lead_category: input.qualification.lead_category,
+            next_followup_at: input.qualification.next_followup_at,
+            remarks: input.qualification.remarks,
+            qualified_by: userId,
+            qualified_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+        
+        if (qualError) {
+          throw new Error(`Failed to create qualification: ${qualError.message}`);
+        }
+        
+        // Create transfer log
+        await supabaseAdmin.from('leads_logs').insert({
+          lead_id: existingLeadId,
+          old_status: existing.status,
+          new_status: 'Qualified',
+          remarks: `Lead transferred from ${existingCreName} and qualified by CRE. ${input.qualification.remarks || ''}`,
+          created_by: userId,
+          metadata: {
+            action: 'lead_transfer_and_qualify',
+            previous_assigned_to: previousAssignedTo,
+            new_assigned_to: userId,
+            previous_cre: existingCreName,
+            outcome: 'qualified',
+            source: input.source_display_name,
+            sub_source: input.sub_source,
+          },
+        });
+        
+        // Fetch updated lead
+        const { data: updatedLead } = await supabaseAdmin
+          .from('leads_master')
+          .select('*')
+          .eq('id', existingLeadId)
+          .single();
+        
+        return {
+          lead: updatedLead,
+          qualification,
+          message: `Lead transferred from ${existingCreName} and qualified successfully`,
+          transferred: true,
+        };
+      }
+    }
   }
   
   // Lookup source by display_name AND source_type (sub_source)
