@@ -7,10 +7,10 @@ export const knowlarityWebhookController = async (
 ) => {
   try {
     // Log incoming webhook for debugging
-    request.log.info('[Webhook] Received Knowlarity webhook', {
+    request.log.info({
       headers: request.headers,
       body: request.body,
-    });
+    }, '[Webhook] Received Knowlarity webhook');
 
     const payload = request.body as any;
 
@@ -19,7 +19,7 @@ export const knowlarityWebhookController = async (
 
     return reply.send({ success: true, message: 'Webhook processed successfully' });
   } catch (error: any) {
-    request.log.error('[Webhook] Knowlarity webhook error:', error);
+    request.log.error(error, '[Webhook] Knowlarity webhook error');
     return reply.status(500).send({
       success: false,
       message: 'Failed to process webhook',
