@@ -218,11 +218,20 @@ export async function startSyncWorker() {
   console.log('[Sync Worker] Step 2: Checking Python dependencies...');
   const depsCheck = await checkPythonDependencies();
   if (!depsCheck.installed) {
-    console.warn('[Sync Worker] ✗ Python dependencies missing - sync worker will fail');
-    console.warn('[Sync Worker] Missing packages:', depsCheck.missing?.join(', '));
-    console.warn('[Sync Worker] Using webhooks as primary sync method (recommended)');
-    console.warn('[Sync Worker] To fix: Install packages or disable sync worker (SYNC_WORKER_ENABLED=false)');
-    // Continue anyway - let it fail gracefully with better error messages
+    console.error('[Sync Worker] ==========================================');
+    console.error('[Sync Worker] ✗ Python dependencies missing!');
+    console.error('[Sync Worker] Missing packages:', depsCheck.missing?.join(', '));
+    console.error('[Sync Worker] ==========================================');
+    console.error('[Sync Worker] Sync worker CANNOT run without Python packages.');
+    console.error('[Sync Worker] Options:');
+    console.error('[Sync Worker] 1. Disable sync worker: Set SYNC_WORKER_ENABLED=false (recommended)');
+    console.error('[Sync Worker] 2. Install packages: pip install ' + depsCheck.missing?.join(' '));
+    console.error('[Sync Worker] ==========================================');
+    console.error('[Sync Worker] Using webhooks as primary sync method (already configured)');
+    console.error('[Sync Worker] GitHub Actions as backup (1-minute sync)');
+    console.error('[Sync Worker] ==========================================');
+    // Don't continue - stop here to prevent repeated failures
+    return;
   } else {
     console.log('[Sync Worker] ✓ All Python dependencies installed');
   }

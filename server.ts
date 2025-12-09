@@ -70,16 +70,22 @@ export const startServer = async () => {
     server.log.info(`Server listening on port ${env.port}`);
     
     // Start sync worker for real-time lead syncing (backup method)
-    // Only start if SYNC_WORKER_ENABLED is true (default: true)
+    // Only start if SYNC_WORKER_ENABLED is not explicitly set to false
     // Note: Webhooks are the primary sync method, sync worker is backup
-    const syncWorkerEnabled = process.env.SYNC_WORKER_ENABLED !== 'false';
+    const syncWorkerEnv = (process.env.SYNC_WORKER_ENABLED || '').trim().toLowerCase();
+    const syncWorkerEnabled = syncWorkerEnv !== 'false';
+    
     if (syncWorkerEnabled) {
+      server.log.info('Sync worker enabled - starting initialization...');
       startSyncWorker().catch(err => {
         server.log.warn('Sync worker failed to start (this is OK if using webhooks):', err);
       });
     } else {
-      server.log.info('Sync worker disabled (SYNC_WORKER_ENABLED=false)');
-      server.log.info('Using webhooks as primary sync method (recommended)');
+      server.log.info('==========================================');
+      server.log.info('Sync worker DISABLED (SYNC_WORKER_ENABLED=false)');
+      server.log.info('Using webhooks as primary sync method ✓');
+      server.log.info('GitHub Actions as backup (1-minute sync) ✓');
+      server.log.info('==========================================');
     }
   } catch (error) {
     server.log.error(error);
