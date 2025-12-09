@@ -22,6 +22,7 @@ export interface ImportError {
     row: number;
     data: ImportLeadRow;
     error: string;
+    errorType?: 'validation' | 'duplicate' | 'source_not_found' | 'database_error' | 'other';
 }
 
 /**
@@ -56,26 +57,61 @@ export const importLeads = async (
         try {
             // Validate required fields
             if (!row.full_name || row.full_name.trim() === '') {
-                throw new Error('full_name is required');
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: 'Customer Name is required and cannot be empty',
+                    errorType: 'validation',
+                });
+                failedCount++;
+                continue;
             }
 
             if (!row.phone_number_normalized || row.phone_number_normalized.trim() === '') {
-                throw new Error('phone_number_normalized is required');
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: 'Phone Number is required and cannot be empty',
+                    errorType: 'validation',
+                });
+                failedCount++;
+                continue;
             }
 
             if (!row.source || row.source.trim() === '') {
-                throw new Error('source is required');
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: 'Source is required and cannot be empty',
+                    errorType: 'validation',
+                });
+                failedCount++;
+                continue;
             }
 
             if (!row.sub_source || row.sub_source.trim() === '') {
-                throw new Error('sub_source is required');
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: 'Sub Source is required and cannot be empty',
+                    errorType: 'validation',
+                });
+                failedCount++;
+                continue;
             }
 
             // Normalize phone
             const normalizedPhone = normalizePhone(row.phone_number_normalized);
 
             if (normalizedPhone.length < 10) {
-                throw new Error('Invalid phone number: Must be at least 10 digits');
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: `Invalid phone number: "${row.phone_number_normalized}" must contain at least 10 digits`,
+                    errorType: 'validation',
+                });
+                failedCount++;
+                continue;
             }
 
             // Check for duplicate phone number
@@ -86,9 +122,14 @@ export const importLeads = async (
                 .maybeSingle();
 
             if (existing) {
-                throw new Error(
-                    `Duplicate: Lead with this phone already exists (ID: ${existing.id}, Status: ${existing.status})`
-                );
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: `Duplicate phone number: A lead with phone "${normalizedPhone}" already exists (Lead ID: ${existing.id}, Name: "${existing.full_name}", Status: "${existing.status}")`,
+                    errorType: 'duplicate',
+                });
+                failedCount++;
+                continue;
             }
 
             // Lookup source by display_name AND source_type (exact match)
@@ -100,13 +141,25 @@ export const importLeads = async (
                 .maybeSingle();
 
             if (sourceError) {
-                throw new Error(`Failed to lookup source: ${sourceError.message}`);
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: `Database error while looking up source: ${sourceError.message}`,
+                    errorType: 'database_error',
+                });
+                failedCount++;
+                continue;
             }
 
             if (!source) {
-                throw new Error(
-                    `Unknown source/sub_source: ${row.source} / ${row.sub_source}. Please create this source combination first or check for exact case match.`
-                );
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: `Source not found: "${row.source}" / "${row.sub_source}". Please create this source combination in the Sources section first, or check for exact spelling/case match.`,
+                    errorType: 'source_not_found',
+                });
+                failedCount++;
+                continue;
             }
 
             // Insert lead
@@ -123,7 +176,14 @@ export const importLeads = async (
                 .single();
 
             if (insertError) {
-                throw new Error(`Failed to insert lead: ${insertError.message}`);
+                errors.push({
+                    row: rowNumber,
+                    data: row,
+                    error: `Database error while creating lead: ${insertError.message}`,
+                    errorType: 'database_error',
+                });
+                failedCount++;
+                continue;
             }
 
             // Create initial log entry
@@ -138,11 +198,13 @@ export const importLeads = async (
             importedLeads.push(lead);
             successCount++;
         } catch (error: any) {
+            // Fallback for any unexpected errors
             failedCount++;
             errors.push({
                 row: rowNumber,
                 data: row,
-                error: error.message,
+                error: error.message || 'Unknown error occurred',
+                errorType: 'other',
             });
         }
     }
