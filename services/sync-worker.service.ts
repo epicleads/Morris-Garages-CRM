@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { existsSync } from 'fs';
+import { writeSystemLog } from './logging.service';
 
 const execAsync = promisify(exec);
 
@@ -119,6 +120,23 @@ async function syncKnowlarity() {
       stderr: error.stderr,
     });
     
+    // Log to system_logs
+    try {
+      await writeSystemLog({
+        level: 'error',
+        message: `Knowlarity sync failed: ${error.message}`,
+        metadata: {
+          errorCode: error.code,
+          stdout: error.stdout?.substring(0, 500), // Limit size
+          stderr: error.stderr?.substring(0, 500),
+          isDependencyError: error.stderr?.includes('ModuleNotFoundError'),
+        },
+      });
+    } catch (logError) {
+      // Don't fail if logging fails
+      console.error('[Sync Worker] Failed to write system log:', logError);
+    }
+    
     // Check if it's a missing dependency error
     if (error.stderr && error.stderr.includes('ModuleNotFoundError')) {
       console.error('[Sync Worker] Python dependencies are missing!');
@@ -179,6 +197,23 @@ async function syncMeta() {
       stdout: error.stdout,
       stderr: error.stderr,
     });
+    
+    // Log to system_logs
+    try {
+      await writeSystemLog({
+        level: 'error',
+        message: `Meta sync failed: ${error.message}`,
+        metadata: {
+          errorCode: error.code,
+          stdout: error.stdout?.substring(0, 500), // Limit size
+          stderr: error.stderr?.substring(0, 500),
+          isDependencyError: error.stderr?.includes('ModuleNotFoundError'),
+        },
+      });
+    } catch (logError) {
+      // Don't fail if logging fails
+      console.error('[Sync Worker] Failed to write system log:', logError);
+    }
     
     // Check if it's a missing dependency error
     if (error.stderr && error.stderr.includes('ModuleNotFoundError')) {

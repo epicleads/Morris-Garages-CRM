@@ -16,6 +16,7 @@ import { webhookRoutes } from './routes/webhooks.routes';
 import { env } from './config/env';
 import { ensureDeveloper } from './services/auth.service';
 import { startSyncWorker } from './services/sync-worker.service';
+import { writeSystemLog } from './services/logging.service';
 
 const buildServer = () => {
   const fastify = Fastify({
@@ -41,14 +42,38 @@ const buildServer = () => {
   fastify.register(analyticsRoutes);
   fastify.register(webhookRoutes);
 
-  fastify.setErrorHandler((error, request, reply) => {
+  fastify.setErrorHandler(async (error, request, reply) => {
     request.log.error(error);
+
+    // Log errors to system_logs table
+    const statusCode = error.statusCode ?? 500;
+    const isError = statusCode >= 500;
+    const isWarning = statusCode >= 400 && statusCode < 500;
+
+    if (isError || isWarning) {
+      try {
+        await writeSystemLog({
+          level: isError ? 'error' : 'warn',
+          message: `API Error: ${error.message || 'Internal Server Error'}`,
+          metadata: {
+            statusCode,
+            method: request.method,
+            url: request.url,
+            userId: (request as any).authUser?.id,
+            errorName: error.name,
+          },
+          user_id: (request as any).authUser?.id,
+        });
+      } catch (logError) {
+        // Don't fail if logging fails
+        request.log.error('Failed to write system log:', logError);
+      }
+    }
 
     if (error instanceof Error && 'issues' in error) {
       return reply.status(400).send({ message: 'Validation failed', details: (error as any).issues });
     }
 
-    const statusCode = error.statusCode ?? 500;
     return reply.status(statusCode).send({ message: error.message ?? 'Internal Server Error' });
   });
 
