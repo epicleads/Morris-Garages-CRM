@@ -6,7 +6,14 @@ export const knowlarityWebhookController = async (
   reply: FastifyReply
 ) => {
   try {
-    // Log incoming webhook for debugging
+    // Log incoming webhook for debugging - use console.log for visibility
+    console.log('==========================================');
+    console.log('[WEBHOOK] Received Knowlarity webhook!');
+    console.log('[WEBHOOK] Headers:', JSON.stringify(request.headers, null, 2));
+    console.log('[WEBHOOK] Body:', JSON.stringify(request.body, null, 2));
+    console.log('[WEBHOOK] Timestamp:', new Date().toISOString());
+    console.log('==========================================');
+    
     request.log.info({
       headers: request.headers,
       body: request.body,
