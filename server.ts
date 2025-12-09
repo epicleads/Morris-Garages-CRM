@@ -55,13 +55,47 @@ const buildServer = () => {
   return fastify;
 };
 
+/**
+ * Retry a function with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  let lastError: any;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      if (attempt < maxRetries - 1) {
+        const delay = initialDelay * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export const startServer = async () => {
   const server = buildServer();
   try {
-    await ensureDeveloper();
+    // Retry ensureDeveloper with exponential backoff (3 attempts)
+    await retryWithBackoff(
+      async () => {
+        await ensureDeveloper();
+        server.log.info('Developer account check completed successfully');
+      },
+      3,
+      2000 // Start with 2 second delay
+    );
   } catch (error: any) {
     server.log.warn(
-      `ensureDeveloper failed: ${error?.message || 'unknown error'}. Continuing startup.`
+      `ensureDeveloper failed after retries: ${error?.message || 'unknown error'}. This is non-critical - server will continue.`
+    );
+    server.log.warn(
+      'Note: Developer account check failed due to network timeout. The server is still functional.'
     );
   }
 

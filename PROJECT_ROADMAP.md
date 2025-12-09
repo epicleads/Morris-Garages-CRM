@@ -13,33 +13,87 @@ This document outlines all remaining features, improvements, and technical tasks
 
 ## 🎯 User-Requested Features
 
-### 1. Import Error Handling & Reporting ⚠️ **HIGH PRIORITY**
+### 1. Import Error Handling & Reporting ✅ **COMPLETED**
 
-**Status:** Not Started  
+**Status:** ✅ Completed (Simple Approach)  
 **Priority:** Phase 1 - Critical
 
+**What Was Implemented:**
+- ✅ Detailed error messages with context (row number, specific field, error type)
+- ✅ Error categorization (validation, duplicate, source_not_found, database_error)
+- ✅ Error modal with summary stats (Total, Success, Failed, Success Rate)
+- ✅ Error grouping by type with color-coded badges
+- ✅ Detailed error table showing all failed rows
+- ✅ Downloadable error report CSV
+- ✅ Partial imports (valid rows imported, invalid rows skipped)
+- ✅ Premium UI aligned with MG theme
+
+**Files Modified:**
+- ✅ `Morris-Garages-CRM/services/import.service.ts` - Enhanced error messages and categorization
+- ✅ `EPICMG/frontend/Frontend/src/pages/admin/AllLeads.tsx` - Integrated error modal
+- ✅ `EPICMG/frontend/Frontend/src/components/admin/ImportErrorModal.tsx` - New component
+- ✅ `EPICMG/frontend/Frontend/src/types/api.ts` - Added ImportError and ImportResult types
+
+**Current Limitations:**
+- Errors are only in memory (not stored in database)
+- No import history tracking
+- No retry mechanism for failed rows
+- Synchronous processing (blocks until complete)
+
+---
+
+### 1A. Advanced Import System with Database Storage 🎯 **NEXT PHASE**
+
+**Status:** Not Started  
+**Priority:** Phase 2 - High Priority
+
 **Requirements:**
-- Show detailed errors when CSV import fails (case sensitivity, duplicates, invalid data)
-- Display row numbers and specific error messages
-- Provide downloadable error report CSV
-- Allow partial imports (import valid rows, report invalid ones)
-- Show error summary before/after import
+- Store import history in `imports` table
+- Store individual errors in `import_errors` table
+- Background job processing (upload → return job ID → process async)
+- Import progress tracking (processed_rows, created_count, etc.)
+- Error resolution workflow (fix errors and retry failed rows)
+- Import audit trail (who imported what, when)
+- View past imports and their results
+- Retry failed imports with corrections
 
 **Technical Approach:**
-- Enhance `importLeads` service to return detailed error array
-- Create error report generation (CSV format)
-- Add error preview modal before import confirmation
-- Store import errors in database for audit trail
+- Use existing `imports` and `import_errors` tables
+- Create background job queue (BullMQ or similar)
+- Store import metadata (file_name, file_size, status, etc.)
+- Store each error with row data, error type, error message
+- Add import status tracking (pending → processing → completed/failed)
+- Create import history UI
+- Add retry mechanism for failed rows
 
-**Files to Modify:**
-- `Morris-Garages-CRM/services/import.service.ts`
-- `EPICMG/frontend/Frontend/src/pages/admin/AllLeads.tsx`
-- Create: `EPICMG/frontend/Frontend/src/components/admin/ImportErrorModal.tsx`
+**Database Tables (Already Exist):**
+- `imports` - Import history and metadata
+- `import_errors` - Individual row errors with resolution tracking
+
+**Files to Create/Modify:**
+- `Morris-Garages-CRM/services/import-advanced.service.ts` - Background processing
+- `Morris-Garages-CRM/services/import-history.service.ts` - History management
+- `Morris-Garages-CRM/controllers/import-advanced.controller.ts` - New endpoints
+- `Morris-Garages-CRM/routes/import-advanced.routes.ts` - New routes
+- `Morris-Garages-CRM/workers/import.worker.ts` - Background worker
+- `EPICMG/frontend/Frontend/src/pages/admin/ImportHistory.tsx` - Import history page
+- `EPICMG/frontend/Frontend/src/components/admin/ImportStatusModal.tsx` - Progress tracking
+- `EPICMG/frontend/Frontend/src/components/admin/RetryImportModal.tsx` - Retry failed rows
+
+**New Endpoints Needed:**
+- `POST /imports` - Upload file, return import job ID
+- `GET /imports/:id` - Get import status and progress
+- `GET /imports/:id/errors` - Get all errors for an import
+- `POST /imports/:id/retry` - Retry failed rows
+- `GET /imports` - List all imports (history)
+- `PATCH /import-errors/:id/resolve` - Mark error as resolved
 
 **Questions to Answer:**
-- [ ] Show errors inline in UI or downloadable report only?
-- [ ] Allow re-upload with corrections or manual fix only?
-- [ ] Should we store failed imports for retry later?
+- [ ] Use BullMQ for job queue or simpler in-memory queue?
+- [ ] Store uploaded file or just metadata?
+- [ ] Auto-retry on source creation or manual only?
+- [ ] Show progress bar during import or just status?
+- [ ] Allow editing errors in UI or CSV download only?
 
 ---
 
@@ -482,10 +536,10 @@ CREATE INDEX IF NOT EXISTS idx_leads_qualification_qualified_by
 ## 🎯 Priority Phases
 
 ### **Phase 1: Critical (Do First)** 🚨
-1. ✅ Import Error Handling (#1)
-2. ✅ Admin View-as-CRE (#6)
-3. ✅ Source Analytics on Click (#7)
-4. ✅ Data Integrity & Validation (#8)
+1. ✅ Import Error Handling (#1) - **COMPLETED (Simple Version)**
+2. ⏳ Admin View-as-CRE (#6)
+3. ⏳ Source Analytics on Click (#7)
+4. ⏳ Data Integrity & Validation (#8)
 
 **Timeline:** 2-3 weeks  
 **Impact:** High user satisfaction, critical workflows
@@ -493,10 +547,11 @@ CREATE INDEX IF NOT EXISTS idx_leads_qualification_qualified_by
 ---
 
 ### **Phase 2: High Priority** ⚡
-5. ✅ Developer Panel (#3)
-6. ✅ Enhanced Exports (#5)
-7. ✅ Dashboard Improvements (#4)
-8. ✅ Performance Optimization (#9)
+1. ⏳ Advanced Import System (#1A) - **NEW: Database storage, background jobs, retry**
+2. ⏳ Developer Panel (#3)
+3. ⏳ Enhanced Exports (#5)
+4. ⏳ Dashboard Improvements (#4)
+5. ⏳ Performance Optimization (#9)
 
 **Timeline:** 3-4 weeks  
 **Impact:** Better UX, system efficiency
@@ -536,6 +591,7 @@ CREATE INDEX IF NOT EXISTS idx_leads_qualification_qualified_by
 - [x] Source Management
 - [x] User Management
 - [x] Assignment Rules
+- [x] **Import Error Handling (Simple)** - Detailed errors, error modal, CSV download, partial imports
 
 ### In Progress 🚧
 - [ ] None currently
@@ -562,10 +618,17 @@ CREATE INDEX IF NOT EXISTS idx_leads_qualification_qualified_by
 
 ## ❓ Open Questions
 
-### Import Error Handling (#1)
-- [ ] Show errors inline in UI or downloadable report only?
-- [ ] Allow re-upload with corrections or manual fix only?
-- [ ] Should we store failed imports for retry later?
+### Import Error Handling (#1) - ✅ RESOLVED
+- [x] Show errors inline in UI or downloadable report only? → **Both: Modal with table + CSV download**
+- [x] Allow re-upload with corrections or manual fix only? → **Manual fix (user downloads CSV, fixes, re-uploads)**
+- [x] Should we store failed imports for retry later? → **Not in simple version, but planned for Advanced Import (#1A)**
+
+### Advanced Import System (#1A) - NEW
+- [ ] Use BullMQ for job queue or simpler in-memory queue?
+- [ ] Store uploaded file or just metadata?
+- [ ] Auto-retry on source creation or manual only?
+- [ ] Show progress bar during import or just status?
+- [ ] Allow editing errors in UI or CSV download only?
 
 ### Raise Ticket System (#2)
 - [ ] Email notifications or in-app notifications only?

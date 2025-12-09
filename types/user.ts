@@ -1,4 +1,4 @@
-export type UserRole = 'Admin' | 'CRE' | 'CRE_TL';
+export type UserRole = 'Admin' | 'CRE' | 'CRE_TL' | 'Developer';
 
 export interface UserRecord {
   user_id: number;

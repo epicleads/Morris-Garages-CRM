@@ -145,30 +145,51 @@ export const deleteUser = async (userId: number): Promise<void> => {
 };
 
 export const ensureDeveloperAccount = async (): Promise<void> => {
-  const existing = await getUserByUsername(env.developerUsername);
+  try {
+    const existing = await getUserByUsername(env.developerUsername);
 
-  if (!existing) {
-    await createUser({
-      username: env.developerUsername,
-      password: env.developerPassword,
-      role: 'CRE_TL', // Developer account uses CRE_TL role but identified by username
-      fullName: 'MGCRM Developer',
-      status: true
-    });
-    return;
-  }
-
-  const passwordMatches = await bcrypt.compare(env.developerPassword, existing.password_hash);
-
-  if (!passwordMatches) {
-    const newHash = await bcrypt.hash(env.developerPassword, 10);
-    const { error } = await supabaseAdmin
-      .from(USERS_TABLE)
-      .update({ password_hash: newHash })
-      .eq('user_id', existing.user_id);
-    if (error) {
-      throw new Error(`Failed to update developer password: ${error.message}`);
+    if (!existing) {
+      // Create new developer account with Developer role
+      await createUser({
+        username: env.developerUsername,
+        password: env.developerPassword,
+        role: 'Developer', // Developer role for developer panel access
+        fullName: 'MGCRM Developer',
+        status: true
+      });
+      return;
     }
+
+    // Update existing developer account to ensure it has Developer role
+    const needsUpdate = existing.role !== 'Developer';
+    const passwordMatches = await bcrypt.compare(env.developerPassword, existing.password_hash);
+
+    if (needsUpdate || !passwordMatches) {
+      const updates: any = {};
+      
+      if (needsUpdate) {
+        updates.role = 'Developer';
+      }
+      
+      if (!passwordMatches) {
+        updates.password_hash = await bcrypt.hash(env.developerPassword, 10);
+      }
+
+      const { error } = await supabaseAdmin
+        .from(USERS_TABLE)
+        .update(updates)
+        .eq('user_id', existing.user_id);
+        
+      if (error) {
+        throw new Error(`Failed to update developer account: ${error.message}`);
+      }
+    }
+  } catch (error: any) {
+    // Re-throw with more context
+    if (error.message?.includes('fetch failed') || error.message?.includes('timeout')) {
+      throw new Error(`Network timeout connecting to Supabase: ${error.message}`);
+    }
+    throw error;
   }
 };
 
