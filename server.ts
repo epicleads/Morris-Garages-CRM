@@ -13,10 +13,12 @@ import usersRoutes from './routes/users.routes';
 import { adminRoutes } from './routes/admin.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import { webhookRoutes } from './routes/webhooks.routes';
+import supportRoutes from './routes/support.routes';
 import { env } from './config/env';
 import { ensureDeveloper } from './services/auth.service';
 import { startSyncWorker } from './services/sync-worker.service';
 import { writeSystemLog } from './services/logging.service';
+import { startCleanupScheduler } from './services/cleanup.service';
 
 const buildServer = () => {
   const fastify = Fastify({
@@ -41,6 +43,7 @@ const buildServer = () => {
   fastify.register(branchesRoutes);
   fastify.register(analyticsRoutes);
   fastify.register(webhookRoutes);
+  fastify.register(supportRoutes);
 
   fastify.setErrorHandler(async (error, request, reply) => {
     request.log.error(error);
@@ -64,9 +67,9 @@ const buildServer = () => {
           },
           user_id: (request as any).authUser?.id,
         });
-      } catch (logError) {
+      } catch (logError: any) {
         // Don't fail if logging fails
-        request.log.error('Failed to write system log:', logError);
+        request.log.error({ err: logError }, 'Failed to write system log');
       }
     }
 
@@ -146,6 +149,10 @@ export const startServer = async () => {
       server.log.info('GitHub Actions as backup (1-minute sync) ✓');
       server.log.info('==========================================');
     }
+
+    // Start cleanup scheduler for old tickets (90 days)
+    startCleanupScheduler();
+    server.log.info('Ticket cleanup scheduler started (runs daily at 2 AM)');
   } catch (error) {
     server.log.error(error);
     process.exit(1);
