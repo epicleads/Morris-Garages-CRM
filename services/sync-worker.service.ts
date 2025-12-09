@@ -1,11 +1,34 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import { existsSync } from 'fs';
 
 const execAsync = promisify(exec);
 
 // Flag to prevent concurrent syncs
 let isSyncing = false;
+
+/**
+ * Get the correct path to Python scripts
+ * In production, scripts are in project root, not relative to compiled code
+ */
+function getScriptPath(scriptName: string): string | null {
+  // Try multiple possible locations
+  const possiblePaths = [
+    path.join(process.cwd(), scriptName), // Project root (production)
+    path.join(process.cwd(), '..', scriptName), // One level up
+    path.join(__dirname, '..', '..', scriptName), // From dist folder
+    path.join(__dirname, '..', scriptName), // From services folder (dev)
+  ];
+
+  for (const scriptPath of possiblePaths) {
+    if (existsSync(scriptPath)) {
+      return scriptPath;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Run Knowlarity sync script
@@ -18,7 +41,13 @@ async function syncKnowlarity() {
 
   try {
     isSyncing = true;
-    const scriptPath = path.join(__dirname, '..', 'knowlarity_sync.py');
+    const scriptPath = getScriptPath('knowlarity_sync.py');
+    
+    if (!scriptPath) {
+      console.warn('[Sync Worker] Knowlarity sync script not found, skipping...');
+      return;
+    }
+
     const { stdout, stderr } = await execAsync(`python ${scriptPath}`);
     
     if (stdout) {
@@ -48,7 +77,13 @@ async function syncMeta() {
 
   try {
     isSyncing = true;
-    const scriptPath = path.join(__dirname, '..', 'meta_sync.py');
+    const scriptPath = getScriptPath('meta_sync.py');
+    
+    if (!scriptPath) {
+      console.warn('[Sync Worker] Meta sync script not found, skipping...');
+      return;
+    }
+
     const { stdout, stderr } = await execAsync(`python ${scriptPath}`);
     
     if (stdout) {
