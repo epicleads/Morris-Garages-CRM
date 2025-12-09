@@ -12,8 +12,10 @@ import creRoutes from './routes/cre.routes';
 import usersRoutes from './routes/users.routes';
 import { adminRoutes } from './routes/admin.routes';
 import analyticsRoutes from './routes/analytics.routes';
+import { webhookRoutes } from './routes/webhooks.routes';
 import { env } from './config/env';
 import { ensureDeveloper } from './services/auth.service';
+import { startSyncWorker } from './services/sync-worker.service';
 
 const buildServer = () => {
   const fastify = Fastify({
@@ -37,6 +39,7 @@ const buildServer = () => {
   fastify.register(adminRoutes);
   fastify.register(branchesRoutes);
   fastify.register(analyticsRoutes);
+  fastify.register(webhookRoutes);
 
   fastify.setErrorHandler((error, request, reply) => {
     request.log.error(error);
@@ -65,6 +68,16 @@ export const startServer = async () => {
   try {
     await server.listen({ port: env.port, host: '0.0.0.0' });
     server.log.info(`Server listening on port ${env.port}`);
+    
+    // Start sync worker for real-time lead syncing
+    // Only start if SYNC_WORKER_ENABLED is true (default: true)
+    const syncWorkerEnabled = process.env.SYNC_WORKER_ENABLED !== 'false';
+    if (syncWorkerEnabled) {
+      startSyncWorker();
+      server.log.info('Sync worker started - Knowlarity: 30s, Meta: 5min');
+    } else {
+      server.log.info('Sync worker disabled (SYNC_WORKER_ENABLED=false)');
+    }
   } catch (error) {
     server.log.error(error);
     process.exit(1);
