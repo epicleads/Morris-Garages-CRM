@@ -69,14 +69,17 @@ export const startServer = async () => {
     await server.listen({ port: env.port, host: '0.0.0.0' });
     server.log.info(`Server listening on port ${env.port}`);
     
-    // Start sync worker for real-time lead syncing
+    // Start sync worker for real-time lead syncing (backup method)
     // Only start if SYNC_WORKER_ENABLED is true (default: true)
+    // Note: Webhooks are the primary sync method, sync worker is backup
     const syncWorkerEnabled = process.env.SYNC_WORKER_ENABLED !== 'false';
     if (syncWorkerEnabled) {
-      startSyncWorker();
-      server.log.info('Sync worker started - Knowlarity: 30s, Meta: 5min');
+      startSyncWorker().catch(err => {
+        server.log.warn('Sync worker failed to start (this is OK if using webhooks):', err);
+      });
     } else {
       server.log.info('Sync worker disabled (SYNC_WORKER_ENABLED=false)');
+      server.log.info('Using webhooks as primary sync method (recommended)');
     }
   } catch (error) {
     server.log.error(error);

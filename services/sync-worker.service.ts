@@ -9,6 +9,19 @@ const execAsync = promisify(exec);
 let isSyncing = false;
 
 /**
+ * Check if Python is available and has required dependencies
+ */
+async function checkPythonAvailable(): Promise<boolean> {
+  try {
+    // Check if python/python3 command exists
+    await execAsync('python --version || python3 --version');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get the correct path to Python scripts
  * In production, scripts are in project root, not relative to compiled code
  */
@@ -105,37 +118,67 @@ async function syncMeta() {
 /**
  * Start the sync worker
  * Polls Knowlarity every 30 seconds, Meta every 5 minutes
+ * Note: This is a backup method. Webhooks are the primary sync method.
  */
-export function startSyncWorker() {
+export async function startSyncWorker() {
   console.log('[Sync Worker] Starting sync worker...');
+  
+  // Check if Python is available
+  const pythonAvailable = await checkPythonAvailable();
+  if (!pythonAvailable) {
+    console.warn('[Sync Worker] Python not available - sync worker disabled');
+    console.warn('[Sync Worker] Using webhooks as primary sync method (recommended)');
+    console.warn('[Sync Worker] To enable sync worker, install Python and dependencies on server');
+    return;
+  }
+
+  // Check if scripts exist
+  const knowlarityScript = getScriptPath('knowlarity_sync.py');
+  const metaScript = getScriptPath('meta_sync.py');
+  
+  if (!knowlarityScript && !metaScript) {
+    console.warn('[Sync Worker] Python scripts not found - sync worker disabled');
+    console.warn('[Sync Worker] Using webhooks as primary sync method (recommended)');
+    return;
+  }
+
   console.log('[Sync Worker] Knowlarity: every 30 seconds');
   console.log('[Sync Worker] Meta: every 5 minutes');
+  console.log('[Sync Worker] Note: Webhooks are primary sync method, this is backup only');
 
-  // Sync Knowlarity every 30 seconds
-  setInterval(() => {
+  // Sync Knowlarity every 30 seconds (only if script exists)
+  if (knowlarityScript) {
+    setInterval(() => {
+      syncKnowlarity().catch(err => {
+        console.error('[Sync Worker] Unhandled error in Knowlarity sync:', err);
+      });
+    }, 30 * 1000); // 30 seconds
+
+    // Run initial sync immediately
     syncKnowlarity().catch(err => {
-      console.error('[Sync Worker] Unhandled error in Knowlarity sync:', err);
+      console.error('[Sync Worker] Initial Knowlarity sync failed:', err);
     });
-  }, 30 * 1000); // 30 seconds
+  } else {
+    console.warn('[Sync Worker] Knowlarity script not found - skipping');
+  }
 
-  // Sync Meta every 5 minutes
-  setInterval(() => {
-    syncMeta().catch(err => {
-      console.error('[Sync Worker] Unhandled error in Meta sync:', err);
-    });
-  }, 5 * 60 * 1000); // 5 minutes
+  // Sync Meta every 5 minutes (only if script exists)
+  if (metaScript) {
+    setInterval(() => {
+      syncMeta().catch(err => {
+        console.error('[Sync Worker] Unhandled error in Meta sync:', err);
+      });
+    }, 5 * 60 * 1000); // 5 minutes
 
-  // Run initial sync immediately
-  syncKnowlarity().catch(err => {
-    console.error('[Sync Worker] Initial Knowlarity sync failed:', err);
-  });
-  
-  // Run initial Meta sync after 10 seconds (to avoid overlap)
-  setTimeout(() => {
-    syncMeta().catch(err => {
-      console.error('[Sync Worker] Initial Meta sync failed:', err);
-    });
-  }, 10 * 1000);
+    // Run initial Meta sync after 10 seconds (to avoid overlap)
+    setTimeout(() => {
+      syncMeta().catch(err => {
+        console.error('[Sync Worker] Initial Meta sync failed:', err);
+      });
+    }, 10 * 1000);
+  } else {
+    console.warn('[Sync Worker] Meta script not found - skipping');
+  }
 
   console.log('[Sync Worker] Sync worker started successfully');
 }
