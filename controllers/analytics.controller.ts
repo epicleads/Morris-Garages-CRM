@@ -8,6 +8,8 @@ import {
   getQualificationDistribution,
   getTopPerformingCres,
   getConversionFunnel,
+  getAdvancedAnalytics,
+  AdvancedAnalyticsFilters,
   DateRange,
 } from '../services/analytics.service';
 
@@ -333,6 +335,80 @@ export const getConversionFunnelController = async (
       return reply.status(400).send({ message: 'Invalid date range parameters', errors: error.errors });
     }
     return reply.status(500).send({ message: 'Failed to fetch conversion funnel', error: error.message });
+  }
+};
+
+// Advanced analytics filters schema
+const advancedAnalyticsSchema = z.object({
+  dateRange: dateRangeSchema.optional(),
+  sourceIds: z.array(z.number().int().positive()).optional(),
+  subSources: z.array(z.string()).optional(),
+  locations: z.array(z.string()).optional(),
+  creIds: z.array(z.number().int().positive()).optional(),
+  branchIds: z.array(z.number().int().positive()).optional(),
+  statuses: z.array(z.string()).optional(),
+  models: z.array(z.string()).optional(),
+  variants: z.array(z.string()).optional(),
+  qualificationCategories: z.array(z.string()).optional(),
+  testDrive: z.boolean().nullable().optional(),
+  booked: z.boolean().nullable().optional(),
+  retailed: z.boolean().nullable().optional(),
+});
+
+/**
+ * POST /analytics/advanced
+ * Get advanced analytics with comprehensive filters
+ */
+export const getAdvancedAnalyticsController = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const user = request.authUser;
+    if (!user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    if (user.role !== 'Admin' && user.role !== 'CRE_TL') {
+      return reply.status(403).send({ message: 'Forbidden: Analytics access restricted' });
+    }
+
+    const body = request.body as any;
+    const validated = advancedAnalyticsSchema.parse(body);
+
+    // Validate custom date range if provided
+    if (validated.dateRange?.type === 'custom' && (!validated.dateRange.startDate || !validated.dateRange.endDate)) {
+      return reply.status(400).send({ message: 'Custom date range requires startDate and endDate' });
+    }
+
+    const filters: AdvancedAnalyticsFilters = {
+      dateRange: validated.dateRange,
+      sourceIds: validated.sourceIds,
+      subSources: validated.subSources,
+      locations: validated.locations,
+      creIds: validated.creIds,
+      branchIds: validated.branchIds,
+      statuses: validated.statuses,
+      models: validated.models,
+      variants: validated.variants,
+      qualificationCategories: validated.qualificationCategories,
+      testDrive: validated.testDrive,
+      booked: validated.booked,
+      retailed: validated.retailed,
+    };
+
+    const result = await getAdvancedAnalytics(filters);
+
+    return reply.send({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('Error fetching advanced analytics:', error);
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({ message: 'Invalid filter parameters', errors: error.errors });
+    }
+    return reply.status(500).send({ message: 'Failed to fetch advanced analytics', error: error.message });
   }
 };
 

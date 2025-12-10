@@ -16,6 +16,8 @@ export interface AccessTokenPayload {
   role: string;
   username: string;
   isDeveloper: boolean;
+  impersonatedBy?: number;
+  impersonationSessionId?: number;
 }
 
 const REFRESH_TABLE = 'refresh_tokens';
@@ -32,7 +34,9 @@ export const generateAccessToken = (payload: AccessTokenPayload): string => {
     {
       role: payload.role,
       username: payload.username,
-      isDeveloper: payload.isDeveloper
+      isDeveloper: payload.isDeveloper,
+      impersonatedBy: payload.impersonatedBy,
+      impersonationSessionId: payload.impersonationSessionId,
     },
     env.jwtAccessSecret,
     options
@@ -40,12 +44,20 @@ export const generateAccessToken = (payload: AccessTokenPayload): string => {
 };
 
 export const verifyAccessToken = (token: string): AccessTokenPayload => {
-  const decoded = verify(token, env.jwtAccessSecret) as JwtPayload & { isDeveloper: boolean };
+  const decoded = verify(token, env.jwtAccessSecret) as JwtPayload & {
+    isDeveloper: boolean;
+    impersonatedBy?: number;
+    impersonationSessionId?: number;
+  };
   return {
     userId: Number(decoded.sub),
     role: String(decoded.role),
     username: String(decoded.username),
-    isDeveloper: Boolean(decoded.isDeveloper)
+    isDeveloper: Boolean(decoded.isDeveloper),
+    impersonatedBy: decoded.impersonatedBy ? Number(decoded.impersonatedBy) : undefined,
+    impersonationSessionId: decoded.impersonationSessionId
+      ? Number(decoded.impersonationSessionId)
+      : undefined,
   };
 };
 

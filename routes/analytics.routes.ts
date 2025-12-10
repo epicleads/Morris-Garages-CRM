@@ -8,6 +8,7 @@ import {
   getQualificationDistributionController,
   getTopPerformingCresController,
   getConversionFunnelController,
+  getAdvancedAnalyticsController,
 } from '../controllers/analytics.controller';
 
 const analyticsRoutes = async (fastify: FastifyInstance) => {
@@ -35,6 +36,9 @@ const analyticsRoutes = async (fastify: FastifyInstance) => {
 
     // Conversion funnel
     instance.get('/analytics/funnel', getConversionFunnelController);
+
+    // Advanced analytics with comprehensive filters
+    instance.post('/analytics/advanced', getAdvancedAnalyticsController);
   });
 };
 

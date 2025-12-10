@@ -15,6 +15,7 @@ import analyticsRoutes from './routes/analytics.routes';
 import { webhookRoutes } from './routes/webhooks.routes';
 import supportRoutes from './routes/support.routes';
 import exportRoutes from './routes/export.routes';
+import impersonationRoutes from './routes/impersonation.routes';
 import { env } from './config/env';
 import { ensureDeveloper } from './services/auth.service';
 import { startSyncWorker } from './services/sync-worker.service';
@@ -46,6 +47,7 @@ const buildServer = () => {
   fastify.register(webhookRoutes);
   fastify.register(supportRoutes);
   fastify.register(exportRoutes);
+  fastify.register(impersonationRoutes);
 
   fastify.setErrorHandler(async (error, request, reply) => {
     request.log.error(error);

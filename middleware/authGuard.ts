@@ -18,7 +18,19 @@ export const authorize =
 
       const token = authHeader.replace('Bearer ', '').trim();
       const payload = verifyAccessToken(token);
-      const userRecord = await getUserById(payload.userId);
+      
+      // Store token payload for impersonation checks
+      (request as any).tokenPayload = payload;
+
+      // If impersonating, check permissions based on the admin user, not the impersonated user
+      let userRecord;
+      if (payload.impersonatedBy) {
+        // Get the admin user who is impersonating
+        userRecord = await getUserById(payload.impersonatedBy);
+      } else {
+        // Normal user
+        userRecord = await getUserById(payload.userId);
+      }
 
       if (!userRecord || !userRecord.status) {
         return reply.status(401).send({ message: 'User disabled' });
@@ -39,7 +51,13 @@ export const authorize =
         }
       }
 
-      request.authUser = safeUser;
+      // Set authUser to the actual user being viewed (impersonated user if impersonating)
+      const actualUserRecord = await getUserById(payload.userId);
+      if (actualUserRecord) {
+        request.authUser = toSafeUser(actualUserRecord);
+      } else {
+        request.authUser = safeUser;
+      }
     } catch (error) {
       request.log.error(error);
       return reply.status(401).send({ message: 'Invalid token' });
