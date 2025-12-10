@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getCrePerformanceMetrics, getCreLeaderboard } from '../services/cre-analytics.service';
-import { DateRange } from '../services/analytics.service';
+import { DateRange, DateRangeType } from '../services/analytics.service';
 
 const dateRangeSchema = z.object({
   type: z.enum(['today', 'mtd', 'ytd', 'all', 'custom']),
