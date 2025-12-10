@@ -18,6 +18,10 @@ import {
   createVerificationCallController,
   createManualLeadController,
 } from '../controllers/cre.controller';
+import {
+  getCrePerformanceController,
+  getCreLeaderboardController,
+} from '../controllers/cre-analytics.controller';
 
 const creRoutes = async (fastify: FastifyInstance) => {
   fastify.register(async (instance) => {
@@ -58,6 +62,15 @@ const creRoutes = async (fastify: FastifyInstance) => {
     instance.get('/cre/leads/qualified', getQualifiedLeadsController);
     instance.get('/cre/leads/won', getWonLeadsController);
     instance.get('/cre/leads/lost', getLostLeadsController);
+
+    // CRE Analytics
+    instance.get('/cre/analytics/performance', getCrePerformanceController);
+  });
+
+  // Leaderboard (Admin/CRE_TL only)
+  fastify.register(async (instance) => {
+    instance.addHook('preHandler', authorize(['Admin', 'CRE_TL']));
+    instance.get('/cre/analytics/leaderboard', getCreLeaderboardController);
   });
 };
 
