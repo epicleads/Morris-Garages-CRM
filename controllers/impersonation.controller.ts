@@ -68,8 +68,22 @@ export const endImpersonationController = async (
     const { verifyAccessToken } = await import('../services/token.service');
     const tokenPayload = verifyAccessToken(token);
 
-    const sessionId = tokenPayload.impersonationSessionId;
-    const adminUserId = tokenPayload.impersonatedBy;
+    let sessionId = tokenPayload.impersonationSessionId;
+    let adminUserId = tokenPayload.impersonatedBy;
+
+    // If token doesn't have impersonation metadata (e.g., after refresh),
+    // try to find active session for the current user (if they're an admin)
+    if (!sessionId || !adminUserId) {
+      // Check if current user is admin/CRE_TL and has an active session
+      if (user.role === 'Admin' || user.role === 'CRE_TL' || user.isDeveloper) {
+        const { getActiveImpersonationSession } = await import('../services/impersonation.service');
+        const activeSession = await getActiveImpersonationSession(user.id);
+        if (activeSession) {
+          sessionId = activeSession.id;
+          adminUserId = activeSession.admin_user_id;
+        }
+      }
+    }
 
     if (!sessionId || !adminUserId) {
       return reply.status(400).send({ message: 'No active impersonation session found' });
