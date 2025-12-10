@@ -50,7 +50,7 @@ export const getCrePerformanceController = async (
 
 /**
  * GET /cre/analytics/leaderboard
- * Get CRE leaderboard (Admin/CRE_TL only)
+ * Get CRE leaderboard (accessible to all CREs, Admin, CRE_TL)
  */
 export const getCreLeaderboardController = async (
   request: FastifyRequest,
@@ -62,8 +62,9 @@ export const getCreLeaderboardController = async (
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    if (user.role !== 'Admin' && user.role !== 'CRE_TL' && !user.isDeveloper) {
-      return reply.status(403).send({ message: 'Forbidden: Only Admin/CRE_TL can access leaderboard' });
+    // Allow CRE, Admin, CRE_TL, and Developer to access leaderboard
+    if (user.role !== 'CRE' && user.role !== 'Admin' && user.role !== 'CRE_TL' && !user.isDeveloper) {
+      return reply.status(403).send({ message: 'Forbidden: Access denied' });
     }
 
     // Parse query parameters (can be nested object or flat)

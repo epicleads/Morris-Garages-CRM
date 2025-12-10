@@ -25,7 +25,7 @@ import {
 
 const creRoutes = async (fastify: FastifyInstance) => {
   fastify.register(async (instance) => {
-    instance.addHook('preHandler', authorize(['CRE']));
+    instance.addHook('preHandler', authorize(['CRE', 'Admin', 'CRE_TL']));
 
     // Dashboard summary
     instance.get('/cre/dashboard/summary', getCreDashboardSummaryController);
@@ -65,11 +65,8 @@ const creRoutes = async (fastify: FastifyInstance) => {
 
     // CRE Analytics
     instance.get('/cre/analytics/performance', getCrePerformanceController);
-  });
-
-  // Leaderboard (Admin/CRE_TL only)
-  fastify.register(async (instance) => {
-    instance.addHook('preHandler', authorize(['Admin', 'CRE_TL']));
+    
+    // Leaderboard (accessible to all CREs, Admin, CRE_TL)
     instance.get('/cre/analytics/leaderboard', getCreLeaderboardController);
   });
 };
