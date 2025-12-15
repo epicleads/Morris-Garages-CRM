@@ -373,6 +373,37 @@ CREATE TABLE impersonation_logs (
 
 ---
 
+### 7. Scalable CRM Roles & Walk-in Flow (Receptionist / RM / TL / GM) 🧩
+
+**Status:** 🚧 In Progress  
+**Priority:** Phase 2 - High Priority
+
+**Current Backend Progress (Phase 2 - Receptionist):**
+- ✅ Database extensions for scalable CRM (`database/scalable_crm_schema.sql`)
+- ✅ `customers` table (global customer identity by phone)
+- ✅ New backend services:
+  - `services/customer.service.ts`
+  - `services/walkins.service.ts`
+- ✅ New controllers & routes for Receptionist walk-ins:
+  - `controllers/walkins.controller.ts`
+  - `routes/walkins.routes.ts`
+  - Endpoints:
+    - `GET /customers/by-phone` – phone search + existing leads
+    - `POST /walkins/create` – create or attach walk-in lead per (customer, branch)
+- ✅ Role support for `Receptionist` in auth & user management
+- ✅ Phase 2 backend documentation:
+  - `Morris-Garages-CRM/PHASE2_RECEPTION_BACKEND.md`
+
+**Next Steps:**
+- ⏳ Phase 2 Frontend – Receptionist:
+  - Build Receptionist UI (phone search + walk-in form)
+  - Use `/customers/by-phone` and `/walkins/create`
+  - Wire to `Receptionist` role in auth routing
+- ⏳ Phase 3 – RM workspace backend + frontend
+- ⏳ Phase 4 – GM approvals & analytics
+
+---
+
 ### 7. Advanced Analytics with Drill-Down 📈
 
 **Status:** ✅ Completed  

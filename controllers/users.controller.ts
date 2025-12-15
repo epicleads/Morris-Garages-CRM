@@ -8,7 +8,9 @@ const createUserSchema = z.object({
     fullName: z.string().max(200).nullable().optional(),
     username: z.string().min(3).max(120),
     password: z.string().min(8),
-    role: z.enum(['Admin', 'CRE', 'CRE_TL']),
+    // Allow creating Admin, CRE, CRE_TL and Receptionist from the panel.
+    // Developer is managed separately via ensureDeveloperAccount.
+    role: z.enum(['Admin', 'CRE', 'CRE_TL', 'Receptionist']),
     phoneNumber: z.string().max(30).nullable().optional(),
     email: z.string().email().nullable().optional(),
     status: z.boolean().optional()
@@ -17,7 +19,7 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
     fullName: z.string().max(200).nullable().optional(),
     password: z.string().min(8).optional(),
-    role: z.enum(['Admin', 'CRE', 'CRE_TL']).optional(),
+    role: z.enum(['Admin', 'CRE', 'CRE_TL', 'Receptionist']).optional(),
     phoneNumber: z.string().max(30).nullable().optional(),
     email: z.string().email().nullable().optional(),
     status: z.boolean().optional()
