@@ -7,6 +7,8 @@ import {
   createRmTestDrive,
   createRmBooking,
   createRmRetail,
+  listRmReminders,
+  markRmReminderRead,
   RmLeadListFilters,
   RmQualificationUpdateInput,
   RmTestDriveInput,
@@ -79,6 +81,10 @@ const rmRetailSchema = z.object({
   invoice_date: z.string().date().optional(),
   on_road_price: z.coerce.number().optional(),
   remarks: z.string().optional()
+});
+
+const rmReminderUpdateSchema = z.object({
+  status: z.enum(['read']).optional(),
 });
 
 export const listRmLeadsController = async (request: AuthenticatedRequest, reply: FastifyReply) => {
@@ -246,4 +252,37 @@ export const createRmRetailController = async (
   }
 };
 
+export const listRmRemindersController = async (
+  request: AuthenticatedRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const user = request.authUser!;
+    const reminders = await listRmReminders(user as any);
+    return reply.send({ reminders });
+  } catch (error: any) {
+    request.log.error(error);
+    return reply.status(400).send({ message: error.message || 'Failed to list reminders' });
+  }
+};
 
+export const markRmReminderReadController = async (
+  request: AuthenticatedRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const user = request.authUser!;
+    const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
+    const { id } = paramsSchema.parse(request.params);
+    rmReminderUpdateSchema.parse(request.body ?? {});
+
+    await markRmReminderRead(user as any, id);
+    return reply.send({ message: 'Reminder updated' });
+  } catch (error: any) {
+    request.log.error(error);
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({ message: 'Validation failed', errors: error.errors });
+    }
+    return reply.status(400).send({ message: error.message || 'Failed to update reminder' });
+  }
+};

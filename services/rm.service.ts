@@ -170,6 +170,55 @@ export const listRmLeads = async (user: SafeUser, filters: RmLeadListFilters) =>
   };
 };
 
+export interface RmReminder {
+  id: number;
+  type: string;
+  title: string | null;
+  message: string | null;
+  related_lead_id: number | null;
+  related_booking_id: number | null;
+  status: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+export const listRmReminders = async (user: SafeUser): Promise<RmReminder[]> => {
+  if (user.role !== 'RM' && !user.isDeveloper && user.role !== 'CRE_TL' && user.role !== 'Admin') {
+    throw new Error('Permission denied: Only RM / TL / Admin / Developer can access RM reminders');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .select('id, type, title, message, related_lead_id, related_booking_id, status, created_at, read_at')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to fetch RM reminders: ${error.message}`);
+  }
+
+  return (data || []) as RmReminder[];
+};
+
+export const markRmReminderRead = async (user: SafeUser, reminderId: number): Promise<void> => {
+  if (user.role !== 'RM' && !user.isDeveloper && user.role !== 'CRE_TL' && user.role !== 'Admin') {
+    throw new Error('Permission denied: Only RM / TL / Admin / Developer can update RM reminders');
+  }
+
+  const { error } = await supabaseAdmin
+    .from('notifications')
+    .update({
+      status: 'read',
+      read_at: new Date().toISOString(),
+    })
+    .eq('id', reminderId)
+    .eq('user_id', user.id);
+
+  if (error) {
+    throw new Error(`Failed to update reminder: ${error.message}`);
+  }
+};
+
 export const getRmLeadDetail = async (user: SafeUser, leadId: number) => {
   if (user.role !== 'RM' && !user.isDeveloper && user.role !== 'CRE_TL' && user.role !== 'Admin') {
     throw new Error('Permission denied: Only RM / TL / Admin / Developer can access RM lead detail');

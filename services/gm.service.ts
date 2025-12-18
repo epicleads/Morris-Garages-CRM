@@ -131,6 +131,54 @@ export interface CustomerJourney {
   }>;
 }
 
+export interface GmReminderInput {
+  bookingId: number;
+  message: string;
+  toRm?: boolean;
+  toTl?: boolean;
+}
+
+export interface GmSentReminder {
+  id: number;
+  type: string;
+  title: string | null;
+  message: string | null;
+  status: string;
+  created_at: string;
+  read_at: string | null;
+  target_user?: {
+    user_id: number;
+    full_name: string | null;
+    role: string | null;
+  } | null;
+  lead?: {
+    id: number;
+    full_name: string;
+    phone_number_normalized: string;
+  } | null;
+  booking?: {
+    id: number;
+    status: string;
+  } | null;
+}
+
+export interface GmRmLeadSummary {
+  id: number;
+  customer_id: number | null;
+  full_name: string;
+  phone_number_normalized: string;
+  status: string;
+  branch_id: number | null;
+  branch_name?: string | null;
+  created_at: string;
+  next_followup_at: string | null;
+  rm_stage: string | null;
+  has_booking: boolean;
+  has_retail: boolean;
+  has_pending_booking: boolean;
+  has_approved_booking: boolean;
+}
+
 /**
  * Get bookings for GM approval
  */
@@ -269,7 +317,7 @@ export const approveGmBooking = async (
     .eq('lead_id', lead.id);
 
   // Create notification for RM/TL (if needed)
-  // This can be extended later
+  // This is extended in sendGmReminderForBooking
 };
 
 /**
@@ -298,6 +346,338 @@ export const rejectGmBooking = async (
   if (error) {
     throw new Error(`Failed to reject booking: ${error.message}`);
   }
+};
+
+/**
+ * Create reminder notifications for RM / TL for a specific booking.
+ * Used by GM from the approvals screen.
+ */
+export const sendGmReminderForBooking = async (
+  user: SafeUser,
+  input: GmReminderInput
+): Promise<void> => {
+  if (user.role !== 'GM' && !user.isDeveloper && user.role !== 'Admin') {
+    throw new Error('Permission denied: Only GM / Admin / Developer can send reminders');
+  }
+
+  const { bookingId, message, toRm = true, toTl = false } = input;
+
+  // Fetch booking to get lead and RM member
+  const { data: booking, error: bookingError } = await supabaseAdmin
+    .from('bookings')
+    .select('id, lead_id, rm_member_id')
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  if (bookingError || !booking) {
+    throw new Error(`Booking not found for reminder: ${bookingError?.message || 'Unknown error'}`);
+  }
+
+  const leadId = (booking as any).lead_id as number | null;
+  const rmMemberId = (booking as any).rm_member_id as number | null;
+
+  if (!rmMemberId) {
+    throw new Error('Cannot send reminder: booking is not linked to an RM member');
+  }
+
+  // Resolve RM member
+  const { data: rmMember, error: rmError } = await supabaseAdmin
+    .from('branch_members')
+    .select('id, user_id, manager_id')
+    .eq('id', rmMemberId)
+    .maybeSingle();
+
+  if (rmError || !rmMember) {
+    throw new Error(`Failed to resolve RM member for reminder: ${rmError?.message || 'Unknown error'}`);
+  }
+
+  // Resolve TL (manager of RM) if requested
+  let tlUserId: number | null = null;
+  if (toTl && rmMember.manager_id) {
+    const { data: tlMember } = await supabaseAdmin
+      .from('branch_members')
+      .select('user_id')
+      .eq('id', rmMember.manager_id)
+      .maybeSingle();
+    tlUserId = tlMember?.user_id ?? null;
+  }
+
+  const notificationsPayload: any[] = [];
+
+  if (toRm && rmMember.user_id) {
+    notificationsPayload.push({
+      user_id: rmMember.user_id,
+      type: 'gm_reminder_rm',
+      title: 'GM Reminder - Booking',
+      message,
+      related_lead_id: leadId,
+      related_booking_id: bookingId,
+      status: 'unread',
+    });
+  }
+
+  if (toTl && tlUserId) {
+    notificationsPayload.push({
+      user_id: tlUserId,
+      type: 'gm_reminder_tl',
+      title: 'GM Reminder - Team Booking',
+      message,
+      related_lead_id: leadId,
+      related_booking_id: bookingId,
+      status: 'unread',
+    });
+  }
+
+  if (!notificationsPayload.length) {
+    // Nothing to send (e.g. missing user mappings)
+    return;
+  }
+
+  const { error: notifError } = await supabaseAdmin
+    .from('notifications')
+    .insert(notificationsPayload);
+
+  if (notifError) {
+    throw new Error(`Failed to create reminders: ${notifError.message}`);
+  }
+};
+
+/**
+ * List all leads for a specific RM member, for GM reminder workflow.
+ */
+export const getRmLeadsForReminder = async (
+  user: SafeUser,
+  rmMemberId: number
+): Promise<GmRmLeadSummary[]> => {
+  if (user.role !== 'GM' && !user.isDeveloper && user.role !== 'Admin') {
+    throw new Error('Permission denied: Only GM / Admin / Developer can view RM leads for reminders');
+  }
+
+  // Fetch qualifications for this RM and join basic lead + branch info
+  const { data, error } = await supabaseAdmin
+    .from('leads_qualification')
+    .select(
+      `
+      id,
+      lead_id,
+      branch_id,
+      next_followup_at,
+      qualified_category,
+      BOOKED,
+      RETAILED,
+      rm_id,
+      leads_master (
+        id,
+        customer_id,
+        full_name,
+        phone_number_normalized,
+        status,
+        branch_id,
+        created_at,
+        next_followup_at
+      ),
+      branches:branch_id (
+        id,
+        name
+      )
+    `
+    )
+    .eq('rm_id', rmMemberId);
+
+  if (error) {
+    throw new Error(`Failed to fetch RM leads for reminders: ${error.message}`);
+  }
+
+  const rows = (data || []) as any[];
+
+  const leadIds = rows.map((r) => r.leads_master?.id).filter(Boolean);
+
+  let bookingsByLead = new Set<number>();
+  let pendingBookingsByLead = new Set<number>();
+  let approvedBookingsByLead = new Set<number>();
+  let retailsByLead = new Set<number>();
+
+  if (leadIds.length > 0) {
+    const { data: bookingRows } = await supabaseAdmin
+      .from('bookings')
+      .select('lead_id, status')
+      .in('lead_id', leadIds);
+
+    (bookingRows || []).forEach((b: any) => {
+      if (!b.lead_id) return;
+      bookingsByLead.add(b.lead_id);
+      if (b.status === 'pending_approval') {
+        pendingBookingsByLead.add(b.lead_id);
+      } else if (b.status === 'approved') {
+        approvedBookingsByLead.add(b.lead_id);
+      }
+    });
+
+    const { data: retailRows } = await supabaseAdmin
+      .from('retails')
+      .select('lead_id, status')
+      .in('lead_id', leadIds);
+
+    (retailRows || []).forEach((r: any) => {
+      if (r.lead_id) retailsByLead.add(r.lead_id);
+    });
+  }
+
+  const leads: GmRmLeadSummary[] = rows.map((row: any) => {
+    const lead = row.leads_master;
+    const branch = row.branches;
+    return {
+      id: lead.id,
+      customer_id: lead.customer_id,
+      full_name: lead.full_name,
+      phone_number_normalized: lead.phone_number_normalized,
+      status: lead.status,
+      branch_id: lead.branch_id,
+      branch_name: branch?.name ?? null,
+      created_at: lead.created_at,
+      next_followup_at: row.next_followup_at || lead.next_followup_at || null,
+      rm_stage: row.qualified_category || null,
+      has_booking: bookingsByLead.has(lead.id),
+      has_retail: retailsByLead.has(lead.id),
+      has_pending_booking: pendingBookingsByLead.has(lead.id),
+      has_approved_booking: approvedBookingsByLead.has(lead.id),
+    };
+  });
+
+  // Newest first
+  leads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  return leads;
+};
+
+/**
+ * Send reminders for multiple leads of a given RM.
+ */
+export const sendGmReminderForLeads = async (
+  user: SafeUser,
+  params: { rmMemberId: number; leadIds: number[]; message: string; toRm?: boolean; toTl?: boolean }
+): Promise<void> => {
+  if (user.role !== 'GM' && !user.isDeveloper && user.role !== 'Admin') {
+    throw new Error('Permission denied: Only GM / Admin / Developer can send reminders');
+  }
+
+  const { rmMemberId, leadIds, message, toRm = true, toTl = false } = params;
+
+  if (!leadIds.length) return;
+
+  const { data: rmMember, error: rmError } = await supabaseAdmin
+    .from('branch_members')
+    .select('id, user_id, manager_id')
+    .eq('id', rmMemberId)
+    .maybeSingle();
+
+  if (rmError || !rmMember) {
+    throw new Error(`Failed to resolve RM member for reminder: ${rmError?.message || 'Unknown error'}`);
+  }
+
+  let tlUserId: number | null = null;
+  if (toTl && rmMember.manager_id) {
+    const { data: tlMember } = await supabaseAdmin
+      .from('branch_members')
+      .select('user_id')
+      .eq('id', rmMember.manager_id)
+      .maybeSingle();
+    tlUserId = tlMember?.user_id ?? null;
+  }
+
+  const notificationsPayload: any[] = [];
+
+  for (const leadId of leadIds) {
+    if (toRm && rmMember.user_id) {
+      notificationsPayload.push({
+        user_id: rmMember.user_id,
+        type: 'gm_reminder_rm',
+        title: 'GM Reminder - Lead',
+        message,
+        related_lead_id: leadId,
+        related_booking_id: null,
+        status: 'unread',
+      });
+    }
+    if (toTl && tlUserId) {
+      notificationsPayload.push({
+        user_id: tlUserId,
+        type: 'gm_reminder_tl',
+        title: 'GM Reminder - Team Lead',
+        message,
+        related_lead_id: leadId,
+        related_booking_id: null,
+        status: 'unread',
+      });
+    }
+  }
+
+  if (!notificationsPayload.length) return;
+
+  const { error } = await supabaseAdmin.from('notifications').insert(notificationsPayload);
+
+  if (error) {
+    throw new Error(`Failed to create reminders: ${error.message}`);
+  }
+};
+
+/**
+ * List all reminders sent by GM (or all reminders of GM-type if Admin/Developer).
+ */
+export const listGmReminders = async (user: SafeUser): Promise<GmSentReminder[]> => {
+  if (user.role !== 'GM' && !user.isDeveloper && user.role !== 'Admin') {
+    throw new Error('Permission denied: Only GM / Admin / Developer can view reminders');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .select(
+      `
+      id,
+      type,
+      title,
+      message,
+      status,
+      created_at,
+      read_at,
+      user_id,
+      users!notifications_user_id_fkey (
+        user_id,
+        full_name,
+        role
+      ),
+      leads_master:related_lead_id (
+        id,
+        full_name,
+        phone_number_normalized
+      ),
+      bookings:related_booking_id (
+        id,
+        status
+      )
+    `
+    )
+    .in('type', ['gm_reminder_rm', 'gm_reminder_tl'])
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to fetch reminders: ${error.message}`);
+  }
+
+  const rows = (data || []) as any[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    status: row.status,
+    created_at: row.created_at,
+    read_at: row.read_at,
+    target_user: row.users || null,
+    lead: row.leads_master || null,
+    booking: row.bookings || null,
+  }));
 };
 
 /**

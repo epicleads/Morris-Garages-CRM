@@ -8,6 +8,10 @@ import {
   approveGmRetailController,
   rejectGmRetailController,
   getCustomerJourneyController,
+  getGmRemindersController,
+  sendGmBookingReminderController,
+  getRmLeadsForReminderController,
+  sendGmLeadRemindersController,
 } from '../controllers/gm.controller';
 
 const gmRoutes = async (fastify: FastifyInstance) => {
@@ -19,6 +23,12 @@ const gmRoutes = async (fastify: FastifyInstance) => {
     instance.get('/gm/bookings', getGmBookingsController);
     instance.patch('/gm/bookings/:id/approve', approveGmBookingController);
     instance.patch('/gm/bookings/:id/reject', rejectGmBookingController);
+    instance.post('/gm/bookings/:id/reminders', sendGmBookingReminderController);
+
+    // Reminders
+    instance.get('/gm/reminders', getGmRemindersController);
+    instance.get('/gm/reminders/rm-leads', getRmLeadsForReminderController);
+    instance.post('/gm/reminders/send', sendGmLeadRemindersController);
 
     // Retails
     instance.get('/gm/retails', getGmRetailsController);

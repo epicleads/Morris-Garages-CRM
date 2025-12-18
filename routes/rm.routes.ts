@@ -6,7 +6,9 @@ import {
   updateRmQualificationController,
   createRmTestDriveController,
   createRmBookingController,
-  createRmRetailController
+  createRmRetailController,
+  listRmRemindersController,
+  markRmReminderReadController
 } from '../controllers/rm.controller';
 
 const rmRoutes = async (fastify: FastifyInstance) => {
@@ -20,6 +22,10 @@ const rmRoutes = async (fastify: FastifyInstance) => {
     instance.post('/rm/leads/:id/test-drive', createRmTestDriveController);
     instance.post('/rm/leads/:id/bookings', createRmBookingController);
     instance.post('/rm/leads/:id/retails', createRmRetailController);
+
+    // Reminders
+    instance.get('/rm/reminders', listRmRemindersController);
+    instance.patch('/rm/reminders/:id/read', markRmReminderReadController);
   });
 };
 
