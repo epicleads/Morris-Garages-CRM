@@ -1,12 +1,5 @@
 import { supabaseAdmin } from '../config/supabase';
-
-// Normalize phone number (last 10 digits)
-function normalizePhone(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length < 10) return null;
-  return digits.slice(-10);
-}
+import { findOrCreateCustomerByPhone, normalizePhone } from './customer.service';
 
 // Ensure Knowlarity source exists
 async function ensureSourceRow(): Promise<{ id: number; total_leads_count: number; todays_leads_count: number }> {
@@ -106,24 +99,31 @@ export async function processKnowlarityWebhook(payload: any) {
   // Extract call data - Knowlarity might send it directly or wrapped
   const callData = payload.data || payload;
 
-  // Normalize phone number
-  const normalizedPhone = normalizePhone(
-    callData.customer_number || callData.caller_id || callData.customer_number_normalized
-  );
-
-  if (!normalizedPhone) {
+  // Extract phone number
+  const rawPhone = callData.customer_number || callData.caller_id || callData.customer_number_normalized;
+  
+  if (!rawPhone) {
     throw new Error('No valid phone number in webhook payload');
   }
 
-  // Ensure Knowlarity source exists
+  // Step 1: Ensure customer exists (new pattern - uses customers table)
+  const { normalizedPhone, customer } = await findOrCreateCustomerByPhone({
+    rawPhone,
+    fullName: `Knowlarity Lead ${normalizePhone(rawPhone)}`, // Default name if not provided
+    city: null // Can be enhanced later if location data is available
+  });
+
+  console.log(`[Webhook Service] Customer ensured: ID=${customer.id}, Phone=${normalizedPhone}`);
+
+  // Step 2: Ensure Knowlarity source exists
   const sourceRow = await ensureSourceRow();
   const sourceId = sourceRow.id;
 
-  // Check for existing lead
+  // Step 3: Check for existing leads for this customer (by customer_id, not just phone)
   const { data: existingLeads, error: queryError } = await supabaseAdmin
     .from('leads_master')
-    .select('id, source_id, created_at')
-    .eq('phone_number_normalized', normalizedPhone);
+    .select('id, source_id, created_at, customer_id')
+    .eq('customer_id', customer.id);
 
   if (queryError) {
     throw new Error(`Failed to query existing leads: ${queryError.message}`);
@@ -134,13 +134,14 @@ export async function processKnowlarityWebhook(payload: any) {
   const isTodayCall = isToday(callDate);
 
   if (!existingLeads || existingLeads.length === 0) {
-    // Case A: New lead - create immediately
-    console.log(`[Webhook Service] Creating new lead for phone: ${normalizedPhone}`);
+    // Case A: New lead for this customer - create immediately
+    console.log(`[Webhook Service] Creating new lead for customer ID: ${customer.id}, phone: ${normalizedPhone}`);
 
     const { error: insertError } = await supabaseAdmin
       .from('leads_master')
       .insert({
-        full_name: `Knowlarity Lead ${normalizedPhone}`,
+        customer_id: customer.id, // NEW: Link to customers table
+        full_name: customer.full_name || `Knowlarity Lead ${normalizedPhone}`,
         phone_number_normalized: normalizedPhone,
         source_id: sourceId,
         external_lead_id: callData.uuid || callData.id?.toString() || null,
@@ -148,6 +149,7 @@ export async function processKnowlarityWebhook(payload: any) {
         raw_payload: callData,
         is_qualified: false,
         total_attempts: 0,
+        branch_id: null, // Can be set later if branch mapping is available
       });
 
     if (insertError) {
@@ -157,14 +159,14 @@ export async function processKnowlarityWebhook(payload: any) {
     // Update source counts
     await updateSourceCounts(sourceId, 1, isTodayCall ? 1 : 0);
 
-    console.log(`[Webhook Service] Lead created successfully for phone: ${normalizedPhone}`);
+    console.log(`[Webhook Service] Lead created successfully for customer ID: ${customer.id}`);
   } else {
     // Check for cross-source duplicate
     const crossSource = existingLeads.find((l) => l.source_id !== sourceId);
 
     if (crossSource) {
       // Case C: Cross-source duplicate - add to history
-      console.log(`[Webhook Service] Cross-source duplicate for phone: ${normalizedPhone}`);
+      console.log(`[Webhook Service] Cross-source duplicate for customer ID: ${customer.id}`);
 
       const { error: histError } = await supabaseAdmin
         .from('lead_sources_history')
@@ -184,10 +186,10 @@ export async function processKnowlarityWebhook(payload: any) {
       // Update source counts
       await updateSourceCounts(sourceId, 1, isTodayCall ? 1 : 0);
 
-      console.log(`[Webhook Service] Cross-source history added for phone: ${normalizedPhone}`);
+      console.log(`[Webhook Service] Cross-source history added for customer ID: ${customer.id}`);
     } else {
       // Case B: Same-source duplicate - skip
-      console.log(`[Webhook Service] Same-source duplicate, skipping: ${normalizedPhone}`);
+      console.log(`[Webhook Service] Same-source duplicate, skipping: customer ID: ${customer.id}`);
     }
   }
 }

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { authorize } from '../middleware/authGuard';
-import { getCustomerByPhoneController, createWalkInLeadController } from '../controllers/walkins.controller';
+import { getCustomerByPhoneController, createWalkInLeadController, createReceptionTestDriveController } from '../controllers/walkins.controller';
+import { getReceptionDashboardController } from '../controllers/reception.controller';
 
 const walkinsRoutes = async (fastify: FastifyInstance) => {
   fastify.register(async (instance) => {
@@ -9,6 +10,12 @@ const walkinsRoutes = async (fastify: FastifyInstance) => {
 
     instance.get('/customers/by-phone', getCustomerByPhoneController);
     instance.post('/walkins/create', createWalkInLeadController);
+
+    // Receptionist dashboard stats & recent activity
+    instance.get('/reception/dashboard', getReceptionDashboardController);
+
+    // Receptionist test drive entry
+    instance.post('/walkins/test-drive', createReceptionTestDriveController);
   });
 };
 

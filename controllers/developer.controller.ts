@@ -13,7 +13,7 @@ const baseUserSchema = {
   fullName: z.string().max(200).nullable().optional(),
   username: z.string().min(3).max(120),
   password: z.string().min(8),
-  role: z.enum(['Admin', 'CRE', 'CRE_TL']),
+  role: z.enum(['Admin', 'CRE', 'CRE_TL', 'Receptionist', 'RM', 'RM_TL', 'GM']),
   phoneNumber: z.string().max(30).nullable().optional(),
   email: z.string().email().nullable().optional(),
   status: z.boolean().optional()
@@ -25,7 +25,7 @@ const updateSchema = z
   .object({
     fullName: z.string().max(200).nullable().optional(),
     password: z.string().min(8).optional(),
-    role: z.enum(['Admin', 'CRE', 'CRE_TL']).optional(),
+    role: z.enum(['Admin', 'CRE', 'CRE_TL', 'Receptionist', 'RM', 'RM_TL', 'GM']).optional(),
     phoneNumber: z.string().max(30).nullable().optional(),
     email: z.string().email().nullable().optional(),
     status: z.boolean().optional()

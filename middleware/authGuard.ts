@@ -4,7 +4,17 @@ import { verifyAccessToken } from '../services/token.service';
 import { getUserById, toSafeUser } from '../services/user.service';
 import { UserRole } from '../types/user';
 
-type GuardRole = UserRole | 'Developer';
+// GuardRole includes all UserRole values (which already includes 'Developer')
+// Explicitly list all roles for better type inference
+export type GuardRole = 
+  | 'Admin' 
+  | 'CRE' 
+  | 'CRE_TL' 
+  | 'Receptionist' 
+  | 'RM' 
+  | 'RM_TL' 
+  | 'GM' 
+  | 'Developer';
 
 export const authorize =
   (allowedRoles?: GuardRole[]) =>

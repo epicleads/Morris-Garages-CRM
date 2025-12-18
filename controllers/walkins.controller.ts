@@ -1,6 +1,12 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { findCustomerWithLeadsByPhone, createOrAttachWalkInLead, WalkInLeadPayload } from '../services/walkins.service';
+import {
+  findCustomerWithLeadsByPhone,
+  createOrAttachWalkInLead,
+  WalkInLeadPayload,
+  createReceptionTestDrive,
+  ReceptionTestDrivePayload,
+} from '../services/walkins.service';
 
 type AuthenticatedRequest = FastifyRequest & {
   authUser?: {
@@ -22,6 +28,18 @@ const createWalkInSchema = z.object({
   model: z.string().max(200).nullable().optional(),
   variant: z.string().max(200).nullable().optional(),
   location: z.string().max(200).nullable().optional(),
+  remarks: z.string().max(1000).nullable().optional()
+});
+
+const createTestDriveSchema = z.object({
+  phone: z.string().min(3, 'Phone number is required'),
+  fullName: z.string().max(200).nullable().optional(),
+  branchId: z.coerce.number().int().positive(),
+  model: z.string().max(200),
+  variant: z.string().max(200).nullable().optional(),
+  startTime: z.string().min(1, 'Start time is required'),
+  endTime: z.string().min(1, 'End time is required'),
+  givenByUserId: z.coerce.number().int().positive().optional(),
   remarks: z.string().max(1000).nullable().optional()
 });
 
@@ -93,6 +111,53 @@ export const createWalkInLeadController = async (request: AuthenticatedRequest, 
       return reply.status(400).send({ message: 'Validation failed', errors: error.errors });
     }
     return reply.status(400).send({ message: error.message || 'Failed to handle walk-in lead' });
+  }
+};
+
+/**
+ * POST /walkins/test-drive
+ *
+ * Creates a test drive entry from Receptionist workflow.
+ */
+export const createReceptionTestDriveController = async (
+  request: AuthenticatedRequest,
+  reply: FastifyReply
+) => {
+  try {
+    const user = request.authUser;
+    if (!user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    const body = createTestDriveSchema.parse(request.body);
+
+    const payload: ReceptionTestDrivePayload = {
+      phone: body.phone,
+      fullName: body.fullName,
+      branchId: body.branchId,
+      model: body.model,
+      variant: body.variant,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      givenByUserId: body.givenByUserId,
+      remarks: body.remarks
+    };
+
+    const result = await createReceptionTestDrive(
+      {
+        id: user.id,
+        role: user.role as any
+      } as any,
+      payload
+    );
+
+    return reply.status(201).send(result);
+  } catch (error: any) {
+    request.log.error(error);
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({ message: 'Validation failed', errors: error.errors });
+    }
+    return reply.status(400).send({ message: error.message || 'Failed to create test drive' });
   }
 };
 

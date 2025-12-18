@@ -5,26 +5,26 @@ import { canViewAllLeads } from '../services/permissions.service';
 
 const createBranchSchema = z.object({
   name: z.string().min(1),
-  city: z.string().optional(),
+  city: z.string().nullable().optional(),
 });
 
 const updateBranchSchema = z.object({
   name: z.string().min(1).optional(),
-  city: z.string().optional(),
+  city: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
 const branchMemberSchema = z.object({
   branchId: z.number().int().positive(),
-  role: z.enum(['TL', 'RM', 'CRE']),
-  userId: z.number().int().positive().optional(), // required only for CRE
+  role: z.enum(['TL', 'RM', 'CRE', 'Receptionist']),
+  userId: z.number().int().positive().optional(), // required for CRE and Receptionist
   contactName: z.string().min(1).optional(), // used for TL/RM
   managerId: z.number().int().positive().nullable().optional(), // for RM -> TL mapping
   isActive: z.boolean().optional(),
 });
 
 const updateBranchMemberSchema = z.object({
-  role: z.enum(['TL', 'RM', 'CRE']).optional(),
+  role: z.enum(['TL', 'RM', 'CRE', 'Receptionist']).optional(),
   contactName: z.string().min(1).optional(),
   managerId: z.number().int().positive().nullable().optional(),
   isActive: z.boolean().optional(),
@@ -35,13 +35,6 @@ export const listBranchesController = async (
   reply: FastifyReply
 ) => {
   try {
-    const user = request.authUser!;
-    if (!canViewAllLeads(user)) {
-      return reply
-        .status(403)
-        .send({ message: 'Permission denied: Only TL/Admin can manage branches' });
-    }
-
     const { data, error } = await supabaseAdmin
       .from('branches')
       .select('id, name, city, is_active, created_at, updated_at')
@@ -157,13 +150,6 @@ export const listBranchMembersController = async (
   reply: FastifyReply
 ) => {
   try {
-    const user = request.authUser!;
-    if (!canViewAllLeads(user)) {
-      return reply
-        .status(403)
-        .send({ message: 'Permission denied: Only TL/Admin can manage branches' });
-    }
-
     const querySchema = z.object({
       branchId: z.coerce.number().int().positive().optional(),
     });
@@ -224,16 +210,17 @@ export const addBranchMemberController = async (
     const body = branchMemberSchema.parse(request.body);
 
     // Business rules:
-    // - CRE: must be linked to an existing user (userId required)
-    // - TL/RM: free-text name (contactName required), userId is optional and usually null
-    if (body.role === 'CRE' && !body.userId) {
+    // - CRE/Receptionist: must be linked to an existing user (userId required)
+    // - TL/RM: can use userId (if provided) OR contactName (if userId not provided)
+    if ((body.role === 'CRE' || body.role === 'Receptionist') && !body.userId) {
       return reply.status(400).send({
-        message: 'userId is required when role is CRE',
+        message: `userId is required when role is ${body.role}`,
       });
     }
-    if (body.role !== 'CRE' && !body.contactName) {
+    // For TL/RM: require either userId OR contactName
+    if (body.role !== 'CRE' && body.role !== 'Receptionist' && !body.userId && !body.contactName) {
       return reply.status(400).send({
-        message: 'contactName is required when role is TL or RM',
+        message: 'Either userId or contactName is required when role is TL or RM',
       });
     }
     // For RM, if managerId provided, ensure it points to a TL in the same branch
@@ -263,12 +250,94 @@ export const addBranchMemberController = async (
       return reply.status(400).send({ message: 'Branch not found' });
     }
 
+    // STRICT duplicate check: Prevent duplicate assignments
+    // Check by userId (if provided) - applies to all roles
+    if (body.userId) {
+      const { data: existingByUserId } = await supabaseAdmin
+        .from('branch_members')
+        .select('id, contact_name')
+        .eq('branch_id', body.branchId)
+        .eq('user_id', body.userId)
+        .eq('role', body.role)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (existingByUserId) {
+        return reply.status(400).send({
+          message: `This user is already assigned to this branch as ${body.role}. Remove them first if you want to reassign.`,
+        });
+      }
+    }
+
+    // Check by contactName (for TL/RM when userId is not provided, or as additional check)
+    if (body.contactName && (body.role === 'TL' || body.role === 'RM')) {
+      const normalizedContactName = body.contactName.trim().toLowerCase();
+      const { data: existingByContactName } = await supabaseAdmin
+        .from('branch_members')
+        .select('id, user_id, contact_name')
+        .eq('branch_id', body.branchId)
+        .eq('role', body.role)
+        .eq('is_active', true)
+        .not('contact_name', 'is', null);
+      
+      // Check if any existing member has the same normalized contact_name
+      // existingByContactName is an array, so we can use find()
+      const duplicate = Array.isArray(existingByContactName) 
+        ? existingByContactName.find(m => 
+            m.contact_name && m.contact_name.trim().toLowerCase() === normalizedContactName
+          )
+        : null;
+      
+      if (duplicate) {
+        return reply.status(400).send({
+          message: `A ${body.role} with the name "${body.contactName}" is already assigned to this branch. Remove them first if you want to reassign.`,
+        });
+      }
+    }
+
+    // Determine user_id and contact_name based on role and provided data
+    // For CRE/Receptionist: always use userId, contact_name is null
+    // For TL/RM: use userId if provided, otherwise try to find by contactName, then use contactName
+    let finalUserId: number | null = null;
+    let finalContactName: string | null = null;
+    
+    if (body.role === 'CRE' || body.role === 'Receptionist') {
+      finalUserId = body.userId!; // Required for these roles
+      finalContactName = null;
+    } else {
+      // TL/RM: prefer userId if provided
+      if (body.userId) {
+        finalUserId = body.userId;
+        finalContactName = null;
+      } else if (body.contactName) {
+        // Try to find user by matching contactName to full_name or username
+        const expectedUserRole = body.role === 'TL' ? 'RM_TL' : 'RM';
+        const { data: matchingUser, error: userLookupError } = await supabaseAdmin
+          .from('users')
+          .select('user_id, full_name, username')
+          .eq('role', expectedUserRole)
+          .or(`full_name.ilike.%${body.contactName}%,username.ilike.%${body.contactName}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (!userLookupError && matchingUser) {
+          // Found matching user - use their user_id
+          finalUserId = matchingUser.user_id;
+          finalContactName = null;
+        } else {
+          // No matching user found - store contactName only
+          finalUserId = null;
+          finalContactName = body.contactName;
+        }
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('branch_members')
       .insert({
         branch_id: body.branchId,
-        user_id: body.role === 'CRE' ? body.userId! : null,
-        contact_name: body.role === 'CRE' ? null : body.contactName || null,
+        user_id: finalUserId,
+        contact_name: finalContactName,
         manager_id: body.role === 'RM' ? body.managerId || null : null,
         role: body.role,
         is_active: body.isActive ?? true,

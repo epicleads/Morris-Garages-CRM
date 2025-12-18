@@ -247,3 +247,354 @@ export const assignLeadsToCre = async (leadIds: number[], creId: number) => {
 
   return { success: true, count: leadIds.length };
 };
+
+
+// ============================================================================
+// 4. ADMIN-MANAGED MASTER DATA (MODELS, VARIANTS, LOCATIONS, REASONS)
+// ============================================================================
+
+// 4.1 Vehicle Models
+export const listVehicleModels = async () => {
+  const { data, error } = await supabaseAdmin
+    .from('vehicle_models')
+    .select('*')
+    .order('display_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch vehicle models: ${error.message}`);
+  }
+
+  return data || [];
+};
+
+export const createVehicleModel = async (input: { name: string; isActive?: boolean; displayOrder?: number | null }) => {
+  const { data, error } = await supabaseAdmin
+    .from('vehicle_models')
+    .insert({
+      name: input.name,
+      is_active: input.isActive ?? true,
+      display_order: input.displayOrder ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create vehicle model: ${error.message}`);
+  }
+
+  return data;
+};
+
+export const updateVehicleModel = async (
+  id: number,
+  input: { name?: string; isActive?: boolean; displayOrder?: number | null }
+) => {
+  const updateData: any = { updated_at: new Date().toISOString() };
+  if (input.name !== undefined) updateData.name = input.name;
+  if (input.isActive !== undefined) updateData.is_active = input.isActive;
+  if (input.displayOrder !== undefined) updateData.display_order = input.displayOrder;
+
+  const { data, error } = await supabaseAdmin
+    .from('vehicle_models')
+    .update(updateData)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update vehicle model: ${error.message}`);
+  }
+
+  return data;
+};
+
+// 4.2 Vehicle Variants
+export const listVehicleVariants = async (modelId?: number) => {
+  let q = supabaseAdmin.from('vehicle_variants').select('*');
+
+  if (modelId) {
+    q = q.eq('model_id', modelId);
+  }
+
+  const { data, error } = await q
+    .order('display_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch vehicle variants: ${error.message}`);
+  }
+
+  return data || [];
+};
+
+export const createVehicleVariant = async (input: {
+  modelId: number;
+  name: string;
+  isActive?: boolean;
+  displayOrder?: number | null;
+}) => {
+  const { data, error } = await supabaseAdmin
+    .from('vehicle_variants')
+    .insert({
+      model_id: input.modelId,
+      name: input.name,
+      is_active: input.isActive ?? true,
+      display_order: input.displayOrder ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create vehicle variant: ${error.message}`);
+  }
+
+  return data;
+};
+
+export const updateVehicleVariant = async (
+  id: number,
+  input: { name?: string; isActive?: boolean; displayOrder?: number | null; modelId?: number }
+) => {
+  const updateData: any = { updated_at: new Date().toISOString() };
+  if (input.name !== undefined) updateData.name = input.name;
+  if (input.isActive !== undefined) updateData.is_active = input.isActive;
+  if (input.displayOrder !== undefined) updateData.display_order = input.displayOrder;
+  if (input.modelId !== undefined) updateData.model_id = input.modelId;
+
+  const { data, error } = await supabaseAdmin
+    .from('vehicle_variants')
+    .update(updateData)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update vehicle variant: ${error.message}`);
+  }
+
+  return data;
+};
+
+// 4.3 Locations
+export const listLocations = async (branchId?: number) => {
+  let q = supabaseAdmin.from('locations').select('*');
+
+  if (branchId) {
+    q = q.eq('branch_id', branchId);
+  }
+
+  const { data, error } = await q
+    .order('display_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch locations: ${error.message}`);
+  }
+
+  return data || [];
+};
+
+export const createLocation = async (input: {
+  name: string;
+  city?: string | null;
+  branchId?: number | null;
+  isActive?: boolean;
+  displayOrder?: number | null;
+}) => {
+  const { data, error } = await supabaseAdmin
+    .from('locations')
+    .insert({
+      name: input.name,
+      city: input.city ?? null,
+      branch_id: input.branchId ?? null,
+      is_active: input.isActive ?? true,
+      display_order: input.displayOrder ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create location: ${error.message}`);
+  }
+
+  return data;
+};
+
+export const updateLocation = async (
+  id: number,
+  input: {
+    name?: string;
+    city?: string | null;
+    branchId?: number | null;
+    isActive?: boolean;
+    displayOrder?: number | null;
+  }
+) => {
+  const updateData: any = { updated_at: new Date().toISOString() };
+  if (input.name !== undefined) updateData.name = input.name;
+  if (input.city !== undefined) updateData.city = input.city;
+  if (input.branchId !== undefined) updateData.branch_id = input.branchId;
+  if (input.isActive !== undefined) updateData.is_active = input.isActive;
+  if (input.displayOrder !== undefined) updateData.display_order = input.displayOrder;
+
+  const { data, error } = await supabaseAdmin
+    .from('locations')
+    .update(updateData)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update location: ${error.message}`);
+  }
+
+  return data;
+};
+
+// 4.4 Pending Reasons
+export const listPendingReasons = async () => {
+  const { data, error } = await supabaseAdmin
+    .from('pending_reasons')
+    .select('*')
+    .order('label', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch pending reasons: ${error.message}`);
+  }
+
+  return data || [];
+};
+
+export const createPendingReason = async (input: {
+  code: string;
+  label: string;
+  description?: string | null;
+  isActive?: boolean;
+  appliesToStage?: string | null;
+}) => {
+  const { data, error } = await supabaseAdmin
+    .from('pending_reasons')
+    .insert({
+      code: input.code,
+      label: input.label,
+      description: input.description ?? null,
+      is_active: input.isActive ?? true,
+      applies_to_stage: input.appliesToStage ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create pending reason: ${error.message}`);
+  }
+
+  return data;
+};
+
+export const updatePendingReason = async (
+  id: number,
+  input: {
+    code?: string;
+    label?: string;
+    description?: string | null;
+    isActive?: boolean;
+    appliesToStage?: string | null;
+  }
+) => {
+  const updateData: any = { updated_at: new Date().toISOString() };
+  if (input.code !== undefined) updateData.code = input.code;
+  if (input.label !== undefined) updateData.label = input.label;
+  if (input.description !== undefined) updateData.description = input.description;
+  if (input.isActive !== undefined) updateData.is_active = input.isActive;
+  if (input.appliesToStage !== undefined) updateData.applies_to_stage = input.appliesToStage;
+
+  const { data, error } = await supabaseAdmin
+    .from('pending_reasons')
+    .update(updateData)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update pending reason: ${error.message}`);
+  }
+
+  return data;
+};
+
+// 4.5 Unqualified / Lost Reasons
+export const listUnqualifiedReasons = async () => {
+  const { data, error } = await supabaseAdmin
+    .from('unqualified_reasons')
+    .select('*')
+    .order('label', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch unqualified reasons: ${error.message}`);
+  }
+
+  return data || [];
+};
+
+export const createUnqualifiedReason = async (input: {
+  code: string;
+  label: string;
+  description?: string | null;
+  category?: string | null;
+  isActive?: boolean;
+  appliesToStage?: string | null;
+}) => {
+  const { data, error } = await supabaseAdmin
+    .from('unqualified_reasons')
+    .insert({
+      code: input.code,
+      label: input.label,
+      description: input.description ?? null,
+      category: input.category ?? null,
+      is_active: input.isActive ?? true,
+      applies_to_stage: input.appliesToStage ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create unqualified reason: ${error.message}`);
+  }
+
+  return data;
+};
+
+export const updateUnqualifiedReason = async (
+  id: number,
+  input: {
+    code?: string;
+    label?: string;
+    description?: string | null;
+    category?: string | null;
+    isActive?: boolean;
+    appliesToStage?: string | null;
+  }
+) => {
+  const updateData: any = { updated_at: new Date().toISOString() };
+  if (input.code !== undefined) updateData.code = input.code;
+  if (input.label !== undefined) updateData.label = input.label;
+  if (input.description !== undefined) updateData.description = input.description;
+  if (input.category !== undefined) updateData.category = input.category;
+  if (input.isActive !== undefined) updateData.is_active = input.isActive;
+  if (input.appliesToStage !== undefined) updateData.applies_to_stage = input.appliesToStage;
+
+  const { data, error } = await supabaseAdmin
+    .from('unqualified_reasons')
+    .update(updateData)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update unqualified reason: ${error.message}`);
+  }
+
+  return data;
+};
+
